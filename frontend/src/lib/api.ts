@@ -14,6 +14,14 @@ export const GENERIC_ERROR = "Something went wrong. Please try again.";
 
 interface Options { method?: string; json?: unknown; form?: FormData; signal?: AbortSignal }
 
+const BASE_URL = (import.meta.env.VITE_API_URL || "").trim().replace(/\/+$/, "");
+
+export function resolveUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) return path;
+  if (!BASE_URL) return path;
+  return `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
 async function raw(path: string, opts: Options = {}): Promise<Response> {
   const headers: Record<string, string> = {};
   const token = tokenStore.get();
@@ -23,7 +31,7 @@ async function raw(path: string, opts: Options = {}): Promise<Response> {
   if (opts.form) body = opts.form;
   let res: Response;
   try {
-    res = await fetch(path, { method: opts.method ?? "GET", headers, body, signal: opts.signal });
+    res = await fetch(resolveUrl(path), { method: opts.method ?? "GET", headers, body, signal: opts.signal });
   } catch (e) {
     if ((e as Error).name === "AbortError") throw e;
     throw new ApiError("Cannot reach the server. Check your connection and try again.", 0, "network");
@@ -62,7 +70,8 @@ export async function downloadFile(path: string, filename: string): Promise<void
 
 /** Signed, short-lived URL for native <video>/<audio> playback and large downloads (issued only after an ownership check). */
 export async function streamUrl(kind: "asset" | "reference", id: string): Promise<string> {
-  return (await api<{ url: string }>("/api/media/stream-url", { method: "POST", json: { kind, id } })).url;
+  const rel = (await api<{ url: string }>("/api/media/stream-url", { method: "POST", json: { kind, id } })).url;
+  return resolveUrl(rel);
 }
 
 /** Downloads a stored file by streaming through the signed URL, so large videos are never held in browser memory. */
