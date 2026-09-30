@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root[data-theme="dark"] {
+  --bg: 13 13 18; --surface: 21 21 28; --raised: 30 30 40; --border: 44 44 58;
+  --fg: 236 236 242; --muted: 148 148 166; --accent: 245 185 66; --accent-fg: 20 16 6;
+  --danger: 248 113 113; --success: 74 222 128; --warn: 250 204 21;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg: 247 247 249; --surface: 255 255 255; --raised: 241 241 245; --border: 220 220 230;
+  --fg: 24 24 32; --muted: 100 100 118; --accent: 190 120 10; --accent-fg: 255 255 255;
+  --danger: 200 40 40; --success: 22 130 70; --warn: 160 110 0;
+  color-scheme: light;
+}
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body { @apply bg-bg text-fg font-sans antialiased; overflow-x: hidden; }
+  h1, h2, h3 { @apply font-display tracking-tight; }
+  :focus-visible { @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-bg; }
+  ::selection { background: rgb(var(--accent) / 0.3); }
+}
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed select-none; }
+  .btn-primary { @apply btn bg-accent text-accent-fg hover:brightness-110; }
+  .btn-secondary { @apply btn border border-border bg-raised text-fg hover:border-muted; }
+  .btn-ghost { @apply btn text-muted hover:bg-raised hover:text-fg; }
+  .btn-danger { @apply btn bg-danger text-white hover:brightness-110; }
+  .field { @apply w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-accent; }
+  .card { @apply rounded-xl border border-border bg-surface; }
+}
+
+@keyframes shimmer { 0% { opacity: .5 } 50% { opacity: 1 } 100% { opacity: .5 } }
+.skeleton { @apply rounded-lg bg-raised; animation: shimmer 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } * { scroll-behavior: auto !important; } }
