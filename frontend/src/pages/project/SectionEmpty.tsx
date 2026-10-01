@@ -39,7 +39,7 @@ export function AssetSection({ projectId, section }: { projectId: string; sectio
   );
 }
 
-const FILTERS = [["ALL", "All", ""], ["VIDEO", "Video", "VIDEO"], ["FACE", "Face", "FACE"], ["STORY", "Story", "STORY"], ["SCRIPT", "Script", "SCRIPT"], ["LYRICS", "Lyrics", "LYRICS"], ["MUSIC", "Music", "MUSIC"], ["VOICE", "Voice", "VOICE"]] as const;
+const FILTERS = [["ALL", "All", ""], ["VIDEO", "Video", "VIDEO"], ["IMAGE", "Image", "IMAGE"], ["FACE", "Face", "FACE"], ["STORY", "Story", "STORY"], ["SCRIPT", "Script", "SCRIPT"], ["LYRICS", "Lyrics", "LYRICS"], ["MUSIC", "Music", "MUSIC"], ["VOICE", "Voice", "VOICE"]] as const;
 
 /** Every asset in the project with basic type filtering. */
 export function AllAssets({ projectId }: { projectId: string }) {

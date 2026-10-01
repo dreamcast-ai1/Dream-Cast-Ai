@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { api, tokenStore } from "../lib/api";
-import { supabaseAuth, type AuthConfig } from "../lib/authProvider";
+import { api, resolveUrl, tokenStore } from "../lib/api";
+import { supabaseAuth, type AuthConfig, type VerificationInfo } from "../lib/authProvider";
 import type { User } from "../lib/types";
 
 interface AuthState {
@@ -8,7 +8,9 @@ interface AuthState {
   loading: boolean;
   config: AuthConfig | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string) => Promise<{ needsConfirmation: boolean }>;
+  register: (email: string, password: string, name: string) => Promise<{ needsConfirmation: boolean; verification?: VerificationInfo }>;
+  verifyEmail: (email: string, code: string) => Promise<void>;
+  resendCode: (email: string) => Promise<{ message: string; resend_after: number; expires_in: number }>;
   loginWithGoogle: () => void;
   forgotPassword: (email: string) => Promise<string>;
   resetPassword: (token: string, password: string) => Promise<string>;
@@ -59,12 +61,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await loadMe();
         return { needsConfirmation: false };
       }
-      const d = await api<{ access_token: string; user: User }>("/api/auth/register", { method: "POST", json: { email, password, name } });
-      tokenStore.set(d.access_token);
-      setUser(d.user);
+      const d = await api<{ access_token?: string; user?: User } & Partial<VerificationInfo> & { verification_required?: boolean }>("/api/auth/register", { method: "POST", json: { email, password, name } });
+      if (d.verification_required) return { needsConfirmation: false, verification: { email: d.email!, expires_in: d.expires_in!, resend_after: d.resend_after! } };
+      tokenStore.set(d.access_token!);
+      setUser(d.user!);
       return { needsConfirmation: false };
     },
-    loginWithGoogle() { if (config?.provider === "supabase") window.location.href = supabaseAuth.googleUrl(config); },
+    async verifyEmail(email, code) {
+      const d = await api<{ access_token: string; user: User }>("/api/auth/verify-email", { method: "POST", json: { email, code } });
+      tokenStore.set(d.access_token);
+      setUser(d.user);
+    },
+    resendCode(email) { return api("/api/auth/resend-otp", { method: "POST", json: { email } }); },
+    loginWithGoogle() {
+      if (config?.provider === "supabase") window.location.href = supabaseAuth.googleUrl(config);
+      else if (config?.google_enabled) window.location.href = resolveUrl("/api/auth/google/start");     // the backend talks to Google; no secret is involved here
+    },
     async forgotPassword(email) {
       if (config?.provider === "supabase") { await supabaseAuth.recover(config, email); return "If an account exists for that email, a reset link has been sent."; }
       return (await api<{ message: string }>("/api/auth/forgot-password", { method: "POST", json: { email } })).message;

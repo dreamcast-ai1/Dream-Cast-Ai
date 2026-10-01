@@ -146,7 +146,7 @@ def test_text_to_video_success_stores_video_thumbnail_asset_and_notifies(client,
     assert [s for s in stages if s != "PREPARING"] == ["SUBMITTING", "GENERATING", "DOWNLOADING", "STORING"]
     sent = fake.submits[0]
     assert sent["model"].endswith("text-to-video")
-    assert sent["payload"] == {"prompt": PROMPT, "duration": "10", "aspect_ratio": "16:9"}
+    assert sent["payload"] == {"prompt": PROMPT, "duration": "10", "aspect_ratio": "16:9", "generate_audio": False}      # Kling v3 schema; audio off = cheaper
     assert fake.headers_seen[0]["authorization"] == "Key test-video-key" and fake.status_calls == 3        # polled until COMPLETED
     [a] = assets(client, h, pid)
     assert a["type"] == "VIDEO" and a["status"] == "READY" and a["format"] == "mp4" and a["mime_type"] == "video/mp4"
@@ -239,7 +239,8 @@ def test_image_to_video_sends_the_uploaded_image_and_needs_one(client, make_user
     assert sent["model"].endswith("image-to-video") and sent["payload"]["prompt"] == body and sent["payload"]["duration"] == "10"
     assert "aspect_ratio" not in sent["payload"]
     import base64
-    head, b64 = sent["payload"]["image_url"].split(",", 1)
+    assert sent["model"].endswith("v3/standard/image-to-video") and "image_url" not in sent["payload"] and sent["payload"]["generate_audio"] is False
+    head, b64 = sent["payload"]["start_image_url"].split(",", 1)           # Kling v3 names the source image start_image_url
     assert head == "data:image/png;base64" and base64.b64decode(b64) == img
     a = assets(client, h, pid)[0]
     assert a["meta"]["method"] == "Image to Video" and a["meta"]["source_asset_id"] == ref["id"]
@@ -281,7 +282,7 @@ def test_reference_and_character_are_described_not_faked_as_consistency(client, 
     assert "Arjun" in sent and "worn leather armor" in sent and "Maya" not in sent and "city.png" in sent and "(location)" in sent
     assert any("references are described in the prompt" in w for w in r["metadata"]["warnings"])
     generate_and_run(client, h, "video", prompt="Arjun walks.", options={**OPTS, "character_ids": [ch["id"]]}, project_id=pid, reference_assets=[ref["id"]])
-    assert "image_url" not in fake.submits[0]["payload"]                     # text-to-video sends no reference images
+    assert "image_url" not in fake.submits[0]["payload"] and "start_image_url" not in fake.submits[0]["payload"]                     # text-to-video sends no reference images
 
 
 def test_reference_upload_deduplicates_and_validates(client, make_user):
@@ -525,3 +526,18 @@ def test_generation_history_links_video_thumbnail(client, make_user, monkeypatch
     generate_and_run(client, h, "video", prompt=PROMPT, options=OPTS, project_id=pid)
     j = client.get("/api/jobs?type=video", headers=h).json()[0]
     assert j["assets"][0]["thumbnail_url"] and client.get(j["assets"][0]["thumbnail_url"], headers=h).status_code == 200
+
+
+def test_older_kling_models_keep_their_own_field_names(client, make_user, monkeypatch):
+    """Configurable models: a pre-v3 model gets `image_url` and no generate_audio (the v3 defaults would be rejected by it)."""
+    fake = use_fal(monkeypatch, FakeFal(), video_provider_model="fal-ai/kling-video/v1.6/standard/text-to-video",
+                   video_provider_i2v_model="fal-ai/kling-video/v1.6/standard/image-to-video")
+    h, _ = make_user()
+    pid = make_project(client, h)
+    video_job(client, h, project_id=pid)
+    ref = upload_ref(client, h, pid, make_png(64, 64, 5), "src.png")
+    r = generate(client, h, "video", prompt="Slow push in", options={"method": "Image to Video", "duration_seconds": 10, "aspect_ratio": "16:9"}, project_id=pid,
+                 reference_assets=[ref["id"]])
+    assert r.status_code == 201, r.text
+    run_all()
+    assert "generate_audio" not in fake.submits[0]["payload"] and "image_url" in fake.submits[1]["payload"] and "start_image_url" not in fake.submits[1]["payload"]

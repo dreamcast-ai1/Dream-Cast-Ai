@@ -18,6 +18,7 @@ class ProviderCapability(str, Enum):
     VOICE = "voice"
     TEXT = "text"      # LLM text (prompt refinement, later story/script/lyrics)
     FACE = "face"
+    IMAGE = "image"
     AVATAR = "avatar"
     SIMULATOR = "simulator"
     # (music and voice providers use MUSIC / VOICE; text generation uses TEXT)

@@ -14,6 +14,7 @@ class Generator:
 
 GENERATORS: list[Generator] = [
     Generator("video", "Video", "🎬", "Turn ideas into video clips and scenes.", "VIDEO", "videos"),
+    Generator("image", "Image", "🖼️", "Create pictures from a description.", "IMAGE", "images"),
     Generator("music", "Music", "🎵", "Compose original music and soundtracks.", "MUSIC", "music"),
     Generator("voice", "Voice", "🎤", "Generate narration and character voices.", "VOICE", "voice"),
     Generator("lyrics", "Lyrics", "✍️", "Write song lyrics in any style.", "LYRICS", "lyrics"),
@@ -27,7 +28,7 @@ GENERATORS: list[Generator] = [
 GENERATOR_IDS = [g.id for g in GENERATORS]
 BY_ID = {g.id: g for g in GENERATORS}
 
-ASSET_TYPES = ["VIDEO", "MUSIC", "VOICE", "LYRICS", "STORY", "SCRIPT", "FACE", "AVATAR"]
+ASSET_TYPES = ["VIDEO", "IMAGE", "MUSIC", "VOICE", "LYRICS", "STORY", "SCRIPT", "FACE", "AVATAR"]
 JOB_STATUSES = ["QUEUED", "PROCESSING", "RETRYING", "COMPLETED", "FAILED", "CANCELLED"]
 ACTIVE_STATUSES = ("QUEUED", "PROCESSING", "RETRYING")
 

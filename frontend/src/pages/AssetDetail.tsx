@@ -76,7 +76,7 @@ export default function AssetDetail() {
     setMsg({ kind: "info", text: "Regeneration started. A new version will be added when it's done; this version is kept." }); void r;
   });
   const duplicate = () => act("dup", async () => { const c = await api<Detail>(`/api/assets/${a.id}/duplicate`, { method: "POST" }); nav(`/projects/${projectId}/assets/${c.id}`); });
-  const remove = () => act("delete", async () => { await api(`/api/assets/${a.id}`, { method: "DELETE" }); nav(`/projects/${projectId}?tab=${a.type === "MUSIC" ? "music" : a.type.toLowerCase()}`, { replace: true }); });
+  const remove = () => act("delete", async () => { await api(`/api/assets/${a.id}`, { method: "DELETE" }); nav(`/projects/${projectId}?tab=${({ VIDEO: "videos", IMAGE: "images" } as Record<string, string>)[a.type] ?? a.type.toLowerCase()}`, { replace: true }); });
   const download = (fmt?: string) => act("dl", async () => {
     if (a.type === "VIDEO" || a.type === "FACE") { await downloadAsset(a.id); return; }     // large files stream via a signed URL
     await downloadFile(`/api/assets/${a.id}/download${fmt ? `?format=${fmt}` : ""}`, `${slug(a.title)}-${a.type.toLowerCase()}-v${a.version}.${fmt ?? a.format}`);
@@ -87,6 +87,8 @@ export default function AssetDetail() {
     ...(a.type === "VOICE" ? [["Gender", String(a.meta.gender ?? "—")], ["Accent", String(a.meta.accent ?? "—")], ["Emotion", String(a.meta.emotion ?? "—")], ["Voice", String(a.meta.voice ?? "—")]] as [string, string][] : []),
     ...(a.type === "VIDEO" ? [["Duration", formatDuration(a.duration_seconds) || "—"], ["Resolution", a.meta.width ? `${a.meta.width}×${a.meta.height}` : "—"],
       ["Aspect ratio", String(a.meta.aspect_ratio ?? opts.aspect_ratio ?? "—")], ["Method", String(a.meta.method ?? opts.method ?? "Text to Video")], ["Style", String(opts.style_custom ?? opts.style ?? "—")]] as [string, string][] : []),
+    ...(a.type === "IMAGE" ? [["Resolution", a.meta.width ? `${a.meta.width}×${a.meta.height}` : "—"], ["Aspect ratio", String(a.meta.aspect_ratio ?? opts.aspect_ratio ?? "—")],
+      ["Style", String(opts.style_custom ?? opts.style ?? "—")], ["Model", String(a.meta.model ?? "—")]] as [string, string][] : []),
     ...(a.type === "FACE" ? [["Kind", "Face replacement"]] as [string, string][] : []),
     ...(isText ? [["Words", String(a.meta.word_count ?? "—")]] as [string, string][] : [])];
   const sourceIds = [a.meta.source_asset_id, a.meta.face_asset_id].filter((x): x is string => typeof x === "string");
@@ -134,6 +136,7 @@ export default function AssetDetail() {
         <div className="min-w-0 space-y-4">
           {a.has_file && a.type === "VIDEO" && <section className="card p-4" aria-label="Video player"><VideoPlayer assetId={a.id} thumbnail={a.thumbnail_url} title={a.title} />
             <p className="mt-2 text-xs text-muted">Use the player controls to play, pause, seek, change volume and go fullscreen. {a.format.toUpperCase()} · {a.mime_type}</p></section>}
+          {a.has_file && a.type === "IMAGE" && <section className="card p-4" aria-label="Generated image"><AuthImage src={a.url} alt={`Generated image: ${a.title}`} className="mx-auto max-h-[70vh] w-full rounded-lg object-contain" /></section>}
           {a.has_file && a.type === "FACE" && <section className="card p-4" aria-label="Result image"><AuthImage src={a.url} alt={`Face replacement result: ${a.title}`} className="mx-auto max-h-[70vh] w-full rounded-lg object-contain" /></section>}
           {a.has_file && (a.type === "MUSIC" || a.type === "VOICE") && <section className="card p-4" aria-label="Audio player"><AuthMedia src={a.url!} kind="audio" label={`${label}: ${a.title}`} />
             <p className="mt-2 text-xs text-muted">Use the player to play, pause and seek. {a.format.toUpperCase()} · {a.mime_type}</p></section>}

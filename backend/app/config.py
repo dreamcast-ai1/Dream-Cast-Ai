@@ -15,12 +15,13 @@ MIN_PRODUCTION_SECRET_LENGTH = 32
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=ROOT_DIR / ".env", extra="ignore")
+    # hide_input_in_errors: a failed validation must never echo the settings (and so the secrets) into the startup log
+    model_config = SettingsConfigDict(env_file=ROOT_DIR / ".env", extra="ignore", hide_input_in_errors=True)
 
     app_env: str = "development"  # development | production | test
     database_url: str = f"sqlite:///{BACKEND_DIR / 'dreamcast.db'}"
     # Explicit browser origins allowed to call the API (comma separated, exact match, never "*").
-    cors_origins: str = "http://localhost:5173"
+    cors_origins: str = ""      # empty: development falls back to http://localhost:5173; production allows only FRONTEND/PRODUCTION_FRONTEND_URL
     # The deployed frontend is always allowed in addition to CORS_ORIGINS, so a missing/stale env var can't break the live site.
     production_frontend_url: str = "https://dreamcaastai.netlify.app"
     frontend_url: str = "http://localhost:5173"
@@ -37,6 +38,30 @@ class Settings(BaseSettings):
     razorpay_key_secret: str = ""     # SECRET: signs/verifies payments; never sent to the browser or logged
     razorpay_webhook_secret: str = "" # SECRET: verifies webhook calls from Razorpay
 
+    # Email (SMTP; server-side only). Used for sign-up verification codes and password reset links. Without it those features report
+    # "email isn't set up" instead of pretending to send anything.
+    email_provider: str = "smtp"      # "smtp" (default) or "brevo" (HTTPS API: use it if your host blocks outgoing SMTP ports, as Render's free tier does)
+    brevo_api_key: str = ""           # SECRET (only for EMAIL_PROVIDER=brevo; sender comes from SMTP_FROM_EMAIL / SMTP_FROM_NAME)
+    smtp_host: str = ""
+    smtp_port: int = 587              # 465 = implicit TLS, anything else uses STARTTLS when the server offers it
+    smtp_username: str = ""
+    smtp_password: str = ""           # SECRET
+    smtp_from_email: str = ""
+    smtp_from_name: str = "Dream Cast AI"
+    smtp_timeout_seconds: float = 15.0
+
+    # Email verification (6-digit one-time code sent at sign-up). Turn off only if you have no email service yet.
+    require_email_verification: bool = True
+    otp_ttl_minutes: int = 10
+    otp_max_attempts: int = 5          # wrong guesses allowed per code
+    otp_resend_seconds: int = 30       # minimum gap between codes for one account
+    reset_ttl_minutes: int = 30
+
+    # Google sign-in (OAuth 2.0 / OpenID Connect, handled by this backend; the client secret never reaches the browser)
+    google_client_id: str = ""
+    google_client_secret: str = ""     # SECRET
+    google_redirect_uri: str = ""      # e.g. https://<backend>/api/auth/google/callback (must match the Google console exactly)
+
     # Auth: "local" (email/password + JWT issued by this API) or "supabase"
     auth_provider: str = "local"
     auth_url: str = ""          # Supabase project URL
@@ -45,7 +70,16 @@ class Settings(BaseSettings):
     access_token_minutes: int = 60 * 24 * 7
     admin_emails: str = ""      # comma separated; these accounts get the ADMIN role
 
-    storage_backend: str = "local"
+    storage_backend: str = "local"      # "local" (development: a folder on this machine) or "s3" (production: S3-compatible object storage)
+    # Object storage (STORAGE_BACKEND=s3). Works with AWS S3, Cloudflare R2, Backblaze B2, Supabase Storage, MinIO... The bucket must be PRIVATE.
+    s3_bucket: str = ""
+    s3_region: str = "auto"             # "auto" for Cloudflare R2; a real region (e.g. ap-south-1) for AWS
+    s3_endpoint_url: str = ""           # empty for AWS S3; the provider's S3 endpoint for R2/B2/Supabase/MinIO
+    s3_access_key_id: str = ""          # SECRET
+    s3_secret_access_key: str = ""      # SECRET
+    s3_prefix: str = ""                 # optional folder inside the bucket
+    s3_addressing_style: str = "auto"   # "auto" | "path" | "virtual"
+    s3_signed_url_seconds: int = 300    # lifetime of a signed download link
     storage_dir: str = str(ROOT_DIR / "storage")
     max_upload_mb: int = 10
 
@@ -82,8 +116,9 @@ class Settings(BaseSettings):
     # Video generation (external provider; server-side only). fal = fal.ai queue API (pay-as-you-go).
     video_provider: str = "fal"
     video_provider_api_key: str = ""
-    video_provider_model: str = "fal-ai/kling-video/v1.6/standard/text-to-video"
-    video_provider_i2v_model: str = "fal-ai/kling-video/v1.6/standard/image-to-video"   # empty = no image-to-video
+    video_provider_model: str = "fal-ai/kling-video/v3/standard/text-to-video"      # (Kling 1.6 / 2.1 are deprecated by fal.ai)
+    video_provider_i2v_model: str = "fal-ai/kling-video/v3/standard/image-to-video"   # empty = no image-to-video
+    video_generate_audio: bool = False      # Kling v3 can add sound at a higher price; off keeps clips cheap (assembly keeps any audio that exists)
     video_provider_base_url: str = ""
     video_max_seconds: int = 10             # longest clip the configured model can make (10, 20 or 30). Never exceeded.
     video_aspect_ratios: str = "16:9,9:16,1:1"
@@ -91,6 +126,14 @@ class Settings(BaseSettings):
     video_max_download_mb: int = 300
 
     # Face replacement (external provider; server-side only).
+    # Image generation (fal.ai text-to-image; server-side only). Leave the key empty to reuse VIDEO_PROVIDER_API_KEY (same fal.ai account).
+    image_provider: str = "fal"
+    image_provider_api_key: str = ""
+    image_provider_model: str = "fal-ai/flux/schnell"     # cheapest fal text-to-image model (fractions of a cent per image)
+    image_provider_base_url: str = ""
+    image_poll_seconds: float = 2.0
+    image_max_download_mb: int = 25
+
     face_provider: str = "fal"
     face_provider_api_key: str = ""
     face_provider_model: str = "fal-ai/face-swap"
@@ -127,6 +170,10 @@ class Settings(BaseSettings):
         return [o for o in dict.fromkeys(origins) if o and o != "*"]
 
     @property
+    def google_enabled(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret and self.google_redirect_uri)
+
+    @property
     def use_forwarded_for(self) -> bool:
         return self.is_production if self.trust_proxy_headers is None else self.trust_proxy_headers
 
@@ -147,8 +194,12 @@ class Settings(BaseSettings):
         """Relative paths in .env are relative to the project root, regardless of the current directory."""
         if self.database_url.startswith("postgres://"):        # Render/Heroku style URL -> the form SQLAlchemy understands
             self.database_url = "postgresql://" + self.database_url[len("postgres://"):]
+        if self.database_url.startswith("postgresql://"):      # no driver named: use psycopg 3 (installed from requirements.txt)
+            self.database_url = "postgresql+psycopg://" + self.database_url[len("postgresql://"):]
         for name in ("auth_secret_key", "auth_public_key", "razorpay_key_id", "razorpay_key_secret", "razorpay_webhook_secret", "llm_api_key",
-                     "music_api_key", "voice_api_key", "video_provider_api_key", "face_provider_api_key"):
+                     "music_api_key", "voice_api_key", "video_provider_api_key", "face_provider_api_key", "image_provider_api_key",
+                     "smtp_host", "smtp_username", "smtp_password", "smtp_from_email", "google_client_id", "google_client_secret", "brevo_api_key",
+                     "s3_bucket", "s3_endpoint_url", "s3_access_key_id", "s3_secret_access_key"):
             value = getattr(self, name).strip()
             setattr(self, name, "" if value.startswith(PLACEHOLDER_PREFIX) else value)     # an unfilled placeholder is not a credential
         if not self.database_url.strip():
@@ -169,6 +220,10 @@ class Settings(BaseSettings):
         # Also signs short-lived media URLs, so a real secret is required in production for every auth provider.
         if self.is_production and self.auth_secret_key == INSECURE_DEFAULT_SECRET:
             raise ValueError("AUTH_SECRET_KEY must be set to a strong random value in production")
+        if self.storage_backend not in ("local", "s3"):
+            raise ValueError("STORAGE_BACKEND must be 'local' or 's3'")
+        if self.storage_backend == "s3" and not (self.s3_bucket and self.s3_access_key_id and self.s3_secret_access_key):
+            raise ValueError("STORAGE_BACKEND=s3 needs S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY")
         if self.is_production and len(self.auth_secret_key) < MIN_PRODUCTION_SECRET_LENGTH:
             raise ValueError(f"AUTH_SECRET_KEY must be at least {MIN_PRODUCTION_SECRET_LENGTH} characters in production")
         if self.is_production and self.frontend_url.rstrip("/") == LOCAL_FRONTEND:

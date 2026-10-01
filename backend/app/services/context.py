@@ -12,6 +12,7 @@ TEXT_LIMIT = 500
 RULES = {
     # Video: nothing is included unless the user selected it (characters/references/story section/scene), to keep prompts relevant and cheap.
     "video": {"story": False, "script": False, "characters": True, "references": True},
+    "image": {"story": False, "script": False, "characters": True, "references": False},
     "music": {"story": True, "script": False, "characters": False, "references": False},
     "voice": {"story": False, "script": True, "characters": True, "references": False},
     "lyrics": {"story": True, "script": False, "characters": False, "references": False},
@@ -21,7 +22,7 @@ RULES = {
     "ai_avatar": {"story": False, "script": False, "characters": True, "references": True},
     "interactive_avatar": {"story": True, "script": False, "characters": True, "references": True},
 }
-CHARACTER_FIELDS = {"video": ("appearance", "clothing"), "voice": ("personality",), "story": ("description", "personality"),
+CHARACTER_FIELDS = {"video": ("appearance", "clothing"), "image": ("appearance", "clothing"), "voice": ("personality",), "story": ("description", "personality"),
                     "script": ("description", "personality"), "ai_avatar": ("appearance",),
                     "interactive_avatar": ("appearance", "personality")}
 
@@ -58,7 +59,7 @@ def get_context(db: Session, project: Project | None, generator: str, *, charact
     if rules["characters"]:
         q = select(Character).where(Character.project_id == project.id).order_by(Character.created_at)
         chars = db.scalars(q).all()
-        if generator == "video" and character_ids is None:
+        if generator in ("video", "image") and character_ids is None:
             chars = []                                   # only characters the user picked
         elif character_ids is not None:
             chars = [c for c in chars if c.id in set(character_ids)]

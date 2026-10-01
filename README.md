@@ -77,8 +77,8 @@ Admins get an **Admin** entry in the sidebar (users, enable/disable, roles, gene
 ## Authentication
 
 **`AUTH_PROVIDER=local` (default, zero setup).** Register/login with email + password. Passwords are bcrypt-hashed, sessions are
-signed JWTs. *Forgot password:* there is deliberately no email server; the reset link is written to the **backend log**
-(`PASSWORD RESET LINK for …`). Email verification/OTP and Google login are not available in this mode.
+signed JWTs. New accounts verify their email with a 6-digit code (SMTP, see below); *Forgot password* emails a single-use reset link;
+**Continue with Google** works when the Google variables are set. Without SMTP those email features answer "email isn't set up" (nothing is faked).
 
 **`AUTH_PROVIDER=supabase` (Google login, email confirmation, emailed password reset).**
 1. Create a free project at supabase.com. *Authentication → Providers*: enable Google (needs a Google OAuth client) and Email.
@@ -329,7 +329,7 @@ check → background job → provider → download into storage → project asse
 ### Providers, cost and keys (read this first)
 | Feature | Provider (adapter) | Cost | Key variable |
 |---|---|---|---|
-| Text-to-video, image-to-video | **fal.ai** queue API, default model **Kling 1.6 standard** | **Paid, pay-as-you-go** (no free tier you can rely on; fal may grant starter credit) | `VIDEO_PROVIDER_API_KEY` |
+| Text-to-video, image-to-video | **fal.ai** queue API, default model **Kling v3 Standard** (Kling 1.6 and 2.1 are deprecated by fal.ai) | **Paid, pay-as-you-go** (no free tier you can rely on; fal may grant starter credit) | `VIDEO_PROVIDER_API_KEY` |
 | Face replacement (image sources) | **fal.ai** `fal-ai/face-swap` | Paid, pay-as-you-go (much cheaper than video) | `FACE_PROVIDER_API_KEY` |
 
 I found no video API that is genuinely free for 10-second clips, so nothing here runs, or costs anything, until you add a key. Without keys the whole app still starts;
@@ -344,7 +344,7 @@ FACE_PROVIDER_API_KEY=<fal key>        # can be the same key; + FACE_PROVIDER_MO
 ```
 Provider classes: `providers/video.py` (`VideoProvider` interface + `FalVideoProvider`), `providers/face.py` (`FaceProvider` + `FalFaceProvider`), shared queue client in `providers/fal.py`.
 Swapping vendors means one new subclass registered in `providers/registry.py`; nothing else knows the vendor. Model payload field names (`prompt`, `duration`, `aspect_ratio`,
-`image_url`) follow the Kling schema, so a different model may need a small change in `build_request`.
+`start_image_url`, `generate_audio`) follow the Kling v3 schema published by fal.ai (checked against fal.ai's docs; older models keep `image_url`), so a different model may need a small change in `build_request`.
 
 ### Video creation
 - **Method:** Text to Video or Image to Video. **Style** (Cinematic, Realistic, Anime, 3D, Cartoon, Fantasy, Horror, Sci-Fi, Documentary, Custom), **duration**, **aspect ratio**, prompt
@@ -409,7 +409,7 @@ Tests mock the fal.ai queue (submit → status → result → file → cancel) a
 - Face Replacement and reference images require choosing a project (uploads are stored in project references).
 - Job progress is stage-based; percentages appear only if a provider reports them. Polling (4–6 s while active), no websockets. No browser push notifications yet.
 - Daily-limit checks are not atomic across processes (fine for one instance). Rate limiting is in-memory per process.
-- Supabase/Google login is still untested without credentials. No email server: local password reset links go to the backend log.
+- Supabase/Google login is still untested without credentials. Real SMTP delivery and real Google sign-in have only been tested with mocks.
 - Frontend has no automated component tests (type-check + build + manual browser verification).
 
 
@@ -441,6 +441,17 @@ Assembling uses no video allowance. The final movie may be longer than 30 s; onl
 - Render free disks are ephemeral: SQLite data and media vanish on redeploy. Use a persistent disk or hosted Postgres before real users.
 
 
+## Images and the Library
+
+**Image generation** (Create → Image) uses fal.ai text-to-image (default `fal-ai/flux/schnell`, the cheapest model) behind the same provider
+interface as video. Set `VIDEO_PROVIDER_API_KEY` (or a separate `IMAGE_PROVIDER_API_KEY`) on the server; without a key an image request fails with a clear
+message, costs nothing and creates no fake image. Each image is stored as a real asset (file, thumbnail, width/height, prompt, model, provider job id, owner, project).
+Results created without choosing a project are saved in an automatic **Quick creations** project so a generated file is never lost. Trailer allows 8 images a day (Indie 32, Blockbuster 128).
+
+**Library** (sidebar) lists everything you generated across all projects: images, videos, assembled movies, stories, scripts, music and voice, each with preview,
+title, date, status, project, duration and prompt, filterable and newest first. **History** still shows the jobs (including running and failed ones, with Retry).
+Both read from the database, so nothing is lost on logout or refresh (on Render's free disk they are lost on redeploy, see the checklist below).
+
 ## Production Deployment Checklist
 
 Backend on **Render**, frontend on **Netlify**. Do the steps in this order: Render, then Netlify, then Razorpay.
@@ -467,12 +478,39 @@ Backend on **Render**, frontend on **Netlify**. Do the steps in this order: Rend
 
 **D. fal.ai (video)**
 - Render variable `VIDEO_PROVIDER_API_KEY` (server-side only, never `VITE_`). Without it the app works and video requests say the provider isn't configured; no fake video is made and nothing is charged.
-- Each generated clip costs money at fal.ai; keep the plan limits low while testing.
+- Each generated clip costs money at fal.ai; keep the plan limits low while testing. The same key also powers image generation (`IMAGE_PROVIDER_API_KEY` is optional).
 
-**E. Storage and database (important)**
-- Render's free disk is **ephemeral**: after a redeploy or restart the SQLite database (users, projects, payments) and all generated/uploaded media are **deleted**. The app starts cleanly and shows "not generated yet" for lost files, but the data is gone.
-- Fine for a demo. For real users you need PostgreSQL (`DATABASE_URL`) and persistent or object storage (a Render persistent disk, or an S3-compatible bucket). These are not set up yet.
+**E. Database and media storage (permanent data)**
+- **PostgreSQL holds all records** (users, verification codes, projects, scenes, jobs, assets, usage, subscriptions, payments, movie metadata) and **S3-compatible object storage holds all files** (images, videos, thumbnails, movies). Render's own disk is never used for permanent data, so redeploys and restarts lose nothing.
+- `DATABASE_URL` = your PostgreSQL URL. `alembic upgrade head` (part of the start command) creates and updates every table; never edit tables by hand.
+- `STORAGE_BACKEND=s3` plus `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT_URL` (empty for AWS), `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`. Create the bucket **private** (no public access, no public ACLs).
+  Cloudflare R2 (free allowance, no egress fees): create a bucket, create an *R2 API token* with *Object Read & Write* on that bucket, then `S3_REGION=auto` and `S3_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com`.
+  AWS S3: create a private bucket and an IAM user limited to that bucket (`s3:GetObject`, `PutObject`, `DeleteObject`, `ListBucket`); leave `S3_ENDPOINT_URL` empty and set `S3_REGION` (for example `ap-south-1`).
+- **No bucket CORS is needed**: the browser never talks to the bucket. It asks the backend, which checks you own the file and then streams it (with Range support for video seeking) or sends you a short-lived signed download link.
+- Admin → System shows whether the database is PostgreSQL and whether the bucket is reachable. Local development keeps working with SQLite and a local `storage/` folder (the defaults).
 
-**F. Password reset**
-- There is no email service. "Forgot password" writes the reset link to the **Render logs** (`PASSWORD RESET LINK for ...`); anyone who can read the logs can use it. Email delivery needs an email provider, which is not configured.
+**F. Email (sign-up codes and password reset)** and **G. Google sign-in**
+- Render variables: `SMTP_HOST`, `SMTP_PORT` (587 or 465), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, `SMTP_FROM_NAME`. Server-side only.
+  **Render's free tier blocks outgoing SMTP ports (25/465/587).** If sign-up says "We couldn't send the email right now", use the HTTPS provider instead:
+  create a free Brevo account, verify your sender address, make an API key, then set `EMAIL_PROVIDER=brevo`, `BREVO_API_KEY`, and `SMTP_FROM_EMAIL` / `SMTP_FROM_NAME` (the verified sender).
+  Gmail: turn on 2-step verification, create an *App password*, use host `smtp.gmail.com`, port 587, your Gmail address as username and the app password as password.
+- `REQUIRE_EMAIL_VERIFICATION=true` (default): new accounts must enter the emailed 6-digit code (10 minutes, single use, 5 wrong tries) before signing in.
+  **Registration needs SMTP**: without it sign-up answers "email isn't set up". Accounts created before this feature are treated as verified. Set it to `false` only as a stop-gap.
+- Password reset sends a single-use link (30 minutes) by email. Reset links and codes are never written to logs or returned by the API.
+- Google: in Google Cloud Console create an *OAuth client ID* (type *Web application*). Add the authorized redirect URI
+  `https://dreamcast-ai-backend.onrender.com/api/auth/google/callback` (it must match `GOOGLE_REDIRECT_URI` exactly; add `http://localhost:8000/api/auth/google/callback` for local testing).
+  Render variables: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`. Never put the secret in the frontend. Also set `FRONTEND_URL` (where Google sign-in returns to).
+- A Google sign-in with an email that already has a password account links to it; if that account's email was never verified, its password is removed first.
+
+
+## First real tests after deploying (do these in order)
+
+1. **Deploy the latest code** (Render backend, then Netlify frontend). Open `https://dreamcast-ai-backend.onrender.com/health` (the first request after a quiet period can take about a minute on the free tier).
+2. **Check the server's configuration.** Sign in with an admin account (an email listed in `ADMIN_EMAILS`) and open **Admin → System**. It lists, with yes/no only and never any secret, whether email, Google, Razorpay (and whether it is *test* or *live* mode), the webhook secret, fal.ai, the database and storage are set up. Fix everything marked *Needs attention* that you plan to use. It also tells you plainly that SQLite and media on Render's free disk are temporary.
+3. **Email:** register a new account with a real inbox, enter the 6-digit code, sign in, then use *Forgot password* and open the emailed link.
+4. **Google:** *Continue with Google* with a Google account that has no DreamCast account yet, then again with one whose email already has a password account (they link).
+5. **Razorpay (TEST mode keys only):** on *Plans* press *Upgrade* on Indie, pay with Razorpay's test card, and confirm the plan changes. Register the webhook (see C above) and check the Razorpay dashboard shows deliveries answered 200.
+6. **fal.ai:** generate **one** image and **one** 10-second video (each costs a little real money), open them in *Library*, play the video.
+7. **Movie:** create a project with two scenes, give each a clip, press *Assemble Movie*, play and download it.
+8. Log out, log in again, and confirm everything is still there. (On Render's free disk it disappears after a redeploy or restart; that is expected, see E.)
 

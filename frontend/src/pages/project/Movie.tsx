@@ -1,4 +1,4 @@
-import { Clapperboard, Download, FileText, Film, Pencil, Plus, Trash2, Video } from "lucide-react";
+import { ChevronDown, ChevronUp, Clapperboard, Download, FileText, Film, Pencil, Plus, Trash2, Video } from "lucide-react";
 import { useState } from "react";
 import { VideoPlayer } from "../../components/VideoPlayer";
 import { SelectField, TextArea, TextField } from "../../components/ui/Field";
@@ -77,7 +77,7 @@ function ImportScript({ projectId, hasScenes, onClose, onDone }: { projectId: st
   );
 }
 
-function SceneCard({ scene, busy, onEdit, onDelete, onGenerate }: { scene: Scene; busy: boolean; onEdit: () => void; onDelete: () => void; onGenerate: () => void }) {
+function SceneCard({ scene, busy, first, last, onMove, onEdit, onDelete, onGenerate }: { scene: Scene; busy: boolean; first: boolean; last: boolean; onMove: (delta: number) => void; onEdit: () => void; onDelete: () => void; onGenerate: () => void }) {
   const working = scene.status === "GENERATING";
   return (
     <li className="card p-4" aria-label={`Scene ${pad(scene.number)}`}>
@@ -86,7 +86,10 @@ function SceneCard({ scene, busy, onEdit, onDelete, onGenerate }: { scene: Scene
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-accent">Scene {pad(scene.number)}</p>
           <h3 className="mt-0.5 break-words text-base font-semibold">{scene.title || "Untitled scene"}</h3>
         </div>
-        <div className="flex items-center gap-2"><StatusBadge status={scene.status} /><span className="text-xs text-muted">{STATUS_LABEL[scene.status]} · {scene.duration_seconds}s</span></div>
+        <div className="flex items-center gap-2">
+          <button className="btn-ghost !p-1.5" onClick={() => onMove(-1)} disabled={first || busy} aria-label={`Move scene ${pad(scene.number)} up`}><ChevronUp className="h-4 w-4" aria-hidden /></button>
+          <button className="btn-ghost !p-1.5" onClick={() => onMove(1)} disabled={last || busy} aria-label={`Move scene ${pad(scene.number)} down`}><ChevronDown className="h-4 w-4" aria-hidden /></button>
+          <StatusBadge status={scene.status} /><span className="text-xs text-muted">{STATUS_LABEL[scene.status]} · {scene.duration_seconds}s</span></div>
       </div>
       {scene.description && <p className="mt-2 line-clamp-3 text-sm text-muted">{scene.description}</p>}
       {scene.characters.length > 0 && <p className="mt-1 text-xs text-muted">Characters: {scene.characters.join(", ")}</p>}
@@ -149,8 +152,9 @@ export function Movie({ projectId, onChanged }: { projectId: string; onChanged: 
       {msg && <div role="status"><Alert kind={msg.kind}>{msg.text}</Alert></div>}
 
       {items.length === 0 ? <EmptyState icon={<Film className="h-6 w-6" />} title="No scenes yet." hint="Add scenes one by one, or create them from a script. Writing scenes is free." /> : (
-        <ol className="space-y-3">{items.map((s) => (
-          <SceneCard key={s.id} scene={s} busy={busy} onEdit={() => setEditing(s)} onDelete={() => setDeleting(s)}
+        <ol className="space-y-3">{items.map((s, i) => (
+          <SceneCard key={s.id} scene={s} busy={busy} first={i === 0} last={i === items.length - 1}
+            onMove={(d) => act(() => api(`/api/projects/${projectId}/scenes/${s.id}`, { method: "PATCH", json: { number: s.number + d } }))} onEdit={() => setEditing(s)} onDelete={() => setDeleting(s)}
             onGenerate={() => act(() => api(`/api/projects/${projectId}/scenes/${s.id}/generate-video`, { method: "POST", json: {} }), `Making Scene ${pad(s.number)}. This uses one video generation.`)} />))}</ol>)}
 
       {items.length > 0 && m && (

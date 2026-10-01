@@ -6,7 +6,7 @@
   GET  /api/media/{token}            the signed URL: supports HTTP Range so the browser can seek without downloading the whole file
 """
 import jwt
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -16,6 +16,7 @@ from ..deps import current_user
 from ..errors import NotFound, Unauthorized
 from ..models import Character, GeneratedAsset, Project, ReferenceAsset, User
 from ..security import create_token, decode_local_token
+from .. import streaming
 from ..services.assets import slug
 from ..storage import get_storage
 from ..uploads import sniff_image
@@ -58,7 +59,7 @@ def _resolve(db: Session, user: User, kind: str, item_id: str) -> tuple[str, obj
     return key, item
 
 
-def _serve(key: str, name: str | None = None, download: bool = False) -> Response:
+def _serve(request: Request, key: str, name: str | None = None, download: bool = False) -> Response:
     storage = get_storage()
     ext = key.rsplit(".", 1)[-1].lower()
     headers = {"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"}
@@ -67,17 +68,17 @@ def _serve(key: str, name: str | None = None, download: bool = False) -> Respons
         mime = _MIME_BY_EXT.get(ext, "application/octet-stream")
         return FileResponse(path, media_type=mime, headers=headers, filename=name if download else None,
                             content_disposition_type="attachment" if download else "inline")
-    data = storage.read(key)
-    sniffed = sniff_image(data)
-    return Response(data, media_type=sniffed[0] if sniffed else _MIME_BY_EXT.get(ext, "application/octet-stream"), headers=headers)
+    if download and (redirect := streaming.signed_download(key, name)):
+        return redirect                                   # object storage: a short-lived signed link, created only after the ownership check
+    return streaming.stream_key(request, key, headers, name, download)
 
 
 @router.get("/files/{kind}/{item_id}")
-def get_file(kind: str, item_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def get_file(request: Request, kind: str, item_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     if kind not in ("project", "reference", "character", "asset", "thumbnail"):
         raise NotFound("File not found.")
     key, _ = _resolve(db, user, kind, item_id)
-    return _serve(key)
+    return _serve(request, key)
 
 
 class StreamIn(BaseModel):
@@ -97,7 +98,7 @@ def stream_url(body: StreamIn, user: User = Depends(current_user), db: Session =
 
 
 @router.get("/media/{token}")
-def media(token: str, download: bool = False, db: Session = Depends(get_db)):
+def media(request: Request, token: str, download: bool = False, db: Session = Depends(get_db)):
     try:
         claims = decode_local_token(token, "media")
         kind, item_id = claims["sub"].split(":", 1)
@@ -109,4 +110,4 @@ def media(token: str, download: bool = False, db: Session = Depends(get_db)):
     if item is None or not owner or not owner.is_active or _owner_id(kind, item) != owner.id or not key or not get_storage().exists(key):
         raise NotFound("File not found.")
     name = f"{slug(getattr(item, 'title', None) or getattr(item, 'name', 'file'))}.{key.rsplit('.', 1)[-1]}"
-    return _serve(key, name, download)
+    return _serve(request, key, name, download)

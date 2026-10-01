@@ -11,6 +11,8 @@ os.environ.update({
     "ADMIN_EMAILS": "boss@example.com",
     "RATE_LIMIT_AUTH_PER_MINUTE": "0",
     "CHECKOUT_RATE_LIMIT_PER_MINUTE": "0",
+    "REQUIRE_EMAIL_VERIFICATION": "false",   # existing tests sign up and use the account at once; test_auth_flows.py turns verification on
+    "OTP_RESEND_SECONDS": "0",
     "REFINE_RATE_LIMIT_PER_MINUTE": "0",
     "WORKER_ENABLED": "false",          # tests drive the runner directly (deterministic, no threads)
     "ENABLE_DEV_SIMULATOR": "true",
@@ -23,6 +25,9 @@ os.environ.update({
     "VIDEO_PROVIDER_API_KEY": "",
     "FACE_PROVIDER_API_KEY": "",
 })
+
+if os.environ.get("TEST_DATABASE_URL"):         # run the whole suite on another database (e.g. a real PostgreSQL): TEST_DATABASE_URL=postgresql+psycopg://...
+    os.environ["DATABASE_URL"] = os.environ["TEST_DATABASE_URL"]
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

@@ -74,6 +74,7 @@ def test_production_never_points_links_at_localhost_and_never_runs_the_simulator
 # ------------------------------------------------------------------ every route is protected unless it is meant to be public
 PUBLIC = {("GET", "/api/auth/config"), ("GET", "/api/health"), ("GET", "/api/subscription/plans"), ("POST", "/api/auth/register"),
           ("POST", "/api/auth/login"), ("POST", "/api/auth/forgot-password"), ("POST", "/api/auth/reset-password"),
+          ("POST", "/api/auth/verify-email"), ("POST", "/api/auth/resend-otp"), ("GET", "/api/auth/google/start"), ("GET", "/api/auth/google/callback"),
           ("POST", "/api/payments/razorpay/webhook")}
 
 
@@ -122,3 +123,18 @@ def test_frontend_source_and_build_inputs_hold_no_provider_variables():
         text = f.read_text()
         assert not re.search(r"VITE_[A-Z_]*(SECRET|API_KEY|RAZORPAY|PROVIDER)", text), f.name
         assert "VIDEO_PROVIDER_API_KEY" not in text and "razorpay_key_secret" not in text.lower(), f.name
+
+
+def test_a_failed_configuration_never_echoes_secrets(monkeypatch):
+    """pydantic normally prints the whole input dictionary in a validation error, which would put secrets into the startup log."""
+    with pytest.raises(ValidationError) as e:
+        Settings(_env_file=None, app_env="production", auth_secret_key="too-short-SECRETVALUE", razorpay_key_secret="rzp-SECRETVALUE-2",
+                 s3_secret_access_key="s3-SECRETVALUE-3", smtp_password="smtp-SECRETVALUE-4")
+    assert "AUTH_SECRET_KEY must be at least 32" in str(e.value)
+    assert "SECRETVALUE" not in str(e.value) and "input_value" not in str(e.value)
+
+
+def test_production_without_cors_origins_allows_only_the_live_frontend():
+    s = Settings(_env_file=None, app_env="production", auth_secret_key=GOOD_SECRET)           # CORS_ORIGINS not set at all
+    assert s.cors_origin_list == [NETLIFY]
+    assert Settings(_env_file=None, app_env="development").cors_origin_list == ["http://localhost:5173", NETLIFY]

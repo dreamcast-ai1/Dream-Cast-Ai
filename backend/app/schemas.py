@@ -27,6 +27,15 @@ class LoginIn(BaseModel):
     password: str = Field(max_length=128)
 
 
+class VerifyEmailIn(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=12)
+
+
+class ResendIn(BaseModel):
+    email: EmailStr
+
+
 class ForgotIn(BaseModel):
     email: EmailStr
 
@@ -46,6 +55,7 @@ class UserOut(ORM):
     is_active: bool
     created_at: datetime
     last_login_at: datetime | None = None
+    email_verified: bool = True
 
 
 class ProfileIn(BaseModel):
@@ -161,6 +171,12 @@ class AssetOut(ORM):
     has_file: bool = False
     created_at: datetime
     updated_at: datetime
+
+
+class LibraryItem(AssetOut):
+    """An asset in the user's library (all projects). is_movie marks assembled movies, which are stored as videos."""
+    project_title: str | None = None
+    is_movie: bool = False
 
 
 class AssetVersion(BaseModel):

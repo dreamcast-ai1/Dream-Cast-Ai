@@ -12,7 +12,7 @@ HARD_MAX_VIDEO_SECONDS = 30          # no plan may exceed this for ONE generated
 
 # TRAILER (free) allowance per usage period (a day), per generator id. Paid plans are multiples of it (see MULTIPLIERS).
 TRAILER_LIMITS: dict[str, int] = {
-    "story": 5, "script": 3, "lyrics": 5, "music": 3, "voice": 5, "video": 3,
+    "story": 5, "script": 3, "lyrics": 5, "music": 3, "voice": 5, "video": 3, "image": 8,
     "face_replacement": 3, "ai_avatar": 3, "interactive_avatar": 12,
 }
 MULTIPLIERS = {"trailer": 1, "indie": 4, "blockbuster": 16}   # each tier 4x the previous one

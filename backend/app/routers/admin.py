@@ -31,6 +31,13 @@ def stats(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/system")
+def system():
+    """Which services are configured on this server (booleans and non-secret settings only; no secret value is ever returned)."""
+    from ..services import system_status
+    return system_status.collect()
+
+
 @router.get("/users")
 def users(db: Session = Depends(get_db)):
     gens = dict(db.execute(select(GenerationJob.user_id, func.count()).group_by(GenerationJob.user_id)).all())

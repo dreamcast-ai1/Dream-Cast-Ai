@@ -1,5 +1,6 @@
 """Job lifecycle service (DB-backed queue). The runner/worker call these; routers expose them to users."""
 import logging
+import threading
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, update
@@ -15,6 +16,7 @@ from . import notifications, usage
 
 log = logging.getLogger("dreamcast.jobs")
 TERMINAL = {"COMPLETED", "FAILED", "CANCELLED"}
+_QUOTA_LOCK = threading.Lock()       # one API process per deployment: guards the allowance check-and-reserve
 
 
 def _label(job_type: str) -> str:
@@ -33,15 +35,16 @@ def create_job(db: Session, user_id: str, generator: str, *, project_id: str | N
     """Low-level: checks the daily allowance, creates a QUEUED job and reserves one unit of usage."""
     if generator not in BY_ID:
         raise AppError("Unknown generator type.", 400)
-    if not usage.has_quota(db, user_id, generator):
-        raise AppError("You have reached today's limit for this generator.", 429, ErrorCode.QUOTA_EXCEEDED.value)
-    job = GenerationJob(user_id=user_id, project_id=project_id, type=generator, original_prompt=original_prompt,
-                        refined_prompt=refined_prompt, options=options or {}, reference_assets=reference_assets or [],
-                        context=context or {}, provider=provider, parent_id=parent_id, input_meta=input_meta or {})
-    db.add(job)
-    db.flush()
-    usage.reserve(db, user_id, generator, job.id, provider)
-    db.commit()
+    with _QUOTA_LOCK:        # check + reserve as one step, so simultaneous requests can't both pass the check and overspend the allowance
+        if not usage.has_quota(db, user_id, generator):
+            raise AppError("You have reached today's limit for this generator.", 429, ErrorCode.QUOTA_EXCEEDED.value)
+        job = GenerationJob(user_id=user_id, project_id=project_id, type=generator, original_prompt=original_prompt,
+                            refined_prompt=refined_prompt, options=options or {}, reference_assets=reference_assets or [],
+                            context=context or {}, provider=provider, parent_id=parent_id, input_meta=input_meta or {})
+        db.add(job)
+        db.flush()
+        usage.reserve(db, user_id, generator, job.id, provider)
+        db.commit()
     return job
 
 
@@ -91,7 +94,7 @@ def complete(db: Session, job: GenerationJob, output_meta: dict | None = None, *
     job.output_meta = output_meta or {}
     db.commit()
     usage.settle(db, job.id, refund=False, provider=job.provider, units=units, cost_estimate=cost_estimate)
-    ready = {"video": "Your video is ready.", "face_replacement": "Your face replacement is ready.", "movie": "Your movie is ready."}.get(
+    ready = {"video": "Your video is ready.", "image": "Your image is ready.", "face_replacement": "Your face replacement is ready.", "movie": "Your movie is ready."}.get(
         job.type, f"Your {_label(job.type)} generation is ready.")
     notifications.notify(db, job.user_id, ready, (job.original_prompt or "")[:120], type="job_completed", job_id=job.id,
                          project_id=job.project_id, asset_id=(output_meta or {}).get("asset_id"))

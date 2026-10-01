@@ -36,6 +36,20 @@ def owned_project_or_404(db: Session, user: User, project_id: str | None) -> Pro
     return p
 
 
+QUICK_PROJECT_TITLE = "Quick creations"
+STORED_GENERATORS = {"music", "voice", "video", "image"}     # file results: without a project they would be lost, so they get one
+
+
+def quick_project(db: Session, user: User) -> Project:
+    """Where results go when no project was chosen, so a generated file or text is never lost (and always shows up in the Library)."""
+    p = db.scalars(select(Project).where(Project.user_id == user.id, Project.title == QUICK_PROJECT_TITLE)).first()
+    if not p:
+        p = Project(user_id=user.id, title=QUICK_PROJECT_TITLE, description="Results you created without choosing a project.")
+        db.add(p)
+        db.commit()
+    return p
+
+
 def prepare(db: Session, user: User, generator_type: str, prompt: str, options: dict | None, project_id: str | None,
             reference_ids: list[str] | None, *, strict: bool) -> Prepared:
     generator = canonical_generator(generator_type)
@@ -174,7 +188,8 @@ def submit(db: Session, user: User, generator_type: str, original_prompt: str, r
         if not parent or parent.user_id != user.id:
             raise NotFound("Generation not found.")
     provider = check_can_submit(db, user, prep.generator)
-    return jobs.create_job(db, user.id, prep.generator, project_id=prep.project.id if prep.project else None,
+    project = prep.project or (quick_project(db, user) if prep.generator in STORED_GENERATORS else None)
+    return jobs.create_job(db, user.id, prep.generator, project_id=project.id if project else None,
                            original_prompt=prep.prompt, refined_prompt=refined, options=prep.options,
                            reference_assets=[r.id for r in prep.references], context=build_context(db, prep, full=True),
                            provider=provider.name, parent_id=parent_id,

@@ -14,7 +14,7 @@ const ONE_CALL: Step[] = [WORDS[0], WORDS[1], { label: "Provider processing", st
 /** Which stages a generator really goes through (matches what the worker reports). */
 function flowFor(type?: string): Step[] {
   if (type === "movie") return MOVIE;
-  if (type === "video" || type === "face_replacement") return REMOTE;
+  if (type === "video" || type === "face_replacement" || type === "image") return REMOTE;
   if (type === "music" || type === "voice") return ONE_CALL;
   return WORDS;
 }

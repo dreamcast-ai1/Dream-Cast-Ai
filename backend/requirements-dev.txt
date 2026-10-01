@@ -1,2 +1,3 @@
 -r requirements.txt
 pytest>=8.0
+moto[s3,server]>=5.0      # in-memory fake S3 for storage tests

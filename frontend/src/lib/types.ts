@@ -9,6 +9,7 @@ export interface Asset {
   version: number; lineage_id: string | null; format: string; language: string; mime_type: string; duration_seconds: number | null;
   meta: Record<string, unknown>; job_id: string | null; url: string | null; thumbnail_url: string | null; has_file: boolean; created_at: string; updated_at: string;
 }
+export interface LibraryItem extends Asset { project_title: string | null; is_movie: boolean }
 export interface SceneInfo { number: number; heading: string; start: number; end: number }
 export interface AssetDetail extends Asset { text_content: string | null; versions: { id: string; version: number; title: string; created_at: string }[] }
 export const TEXT_ASSET_TYPES = ["STORY", "SCRIPT", "LYRICS"];

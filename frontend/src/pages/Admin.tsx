@@ -10,7 +10,27 @@ import type { AdminStats, AdminUser, Job, ProviderInfo } from "../lib/types";
 
 const PLAN_CHOICES: [string, string][] = [["trailer", "Trailer"], ["indie", "Indie"], ["blockbuster", "Blockbuster"]];
 const TABS = [{ id: "overview", label: "Overview" }, { id: "users", label: "Users" }, { id: "limits", label: "Limits" },
-  { id: "jobs", label: "Failed jobs" }, { id: "providers", label: "Providers" }];
+  { id: "jobs", label: "Failed jobs" }, { id: "providers", label: "Providers" }, { id: "system", label: "System" }];
+
+interface SystemItem { id: string; label: string; ok: boolean; detail: string }
+
+/** Which services are configured on the server you are connected to. Shows names and yes/no only; secrets are never returned by the API. */
+function System() {
+  const { data, loading, error, reload } = useAsync(() => api<{ items: SystemItem[]; all_ok: boolean }>("/api/admin/system"));
+  if (loading) return <PageLoader />;
+  if (error) return <ErrorState message={error} onRetry={reload} />;
+  return (
+    <div className="space-y-3">
+      <Alert kind={data!.all_ok ? "success" : "info"}>{data!.all_ok ? "Everything is configured." : "Items marked \"Needs attention\" are not configured on this server yet. Values are never shown here."}</Alert>
+      <ul className="card divide-y divide-border">{data!.items.map((i) => (
+        <li key={i.id} className="flex flex-wrap items-start justify-between gap-2 px-4 py-3 text-sm">
+          <span className="min-w-0"><span className="font-medium">{i.label}</span><span className="block break-words text-xs text-muted">{i.detail}</span></span>
+          <span className={`flex shrink-0 items-center gap-1.5 ${i.ok ? "text-success" : "text-muted"}`}><span aria-hidden className={`h-2 w-2 rounded-full ${i.ok ? "bg-success" : "bg-muted"}`} />{i.ok ? "OK" : "Needs attention"}</span>
+        </li>))}</ul>
+      <button className="btn-secondary" onClick={() => void reload()}>Refresh</button>
+    </div>
+  );
+}
 
 function Overview() {
   const { data, loading, error, reload } = useAsync(() => api<AdminStats>("/api/admin/stats"));
@@ -156,7 +176,7 @@ export default function Admin() {
     <div>
       <PageHeader title="Admin" subtitle="Manage users, limits and system health." />
       <Tabs label="Admin sections" tabs={TABS} active={tab} onChange={(id) => setParams({ tab: id }, { replace: true })} />
-      <TabPanel id={tab}>{tab === "overview" && <Overview />}{tab === "users" && <Users />}{tab === "limits" && <Limits />}{tab === "jobs" && <FailedJobs />}{tab === "providers" && <Providers />}</TabPanel>
+      <TabPanel id={tab}>{tab === "overview" && <Overview />}{tab === "users" && <Users />}{tab === "limits" && <Limits />}{tab === "jobs" && <FailedJobs />}{tab === "providers" && <Providers />}{tab === "system" && <System />}</TabPanel>
     </div>
   );
 }

@@ -33,6 +33,7 @@ registry = ProviderRegistry()
 def register_default_providers() -> None:
     """Called at startup. Add new providers here (video, avatar, ... in later phases)."""
     from .face import build_face_provider
+    from .image import build_image_provider
     from .music import build_music_provider
     from .simulator import DevSimulatorProvider
     from .text import PromptRefinementProvider
@@ -47,6 +48,7 @@ def register_default_providers() -> None:
     registry.register(build_voice_provider())
     registry.register(build_video_provider())
     registry.register(build_face_provider())
+    registry.register(build_image_provider())
     if get_settings().enable_dev_simulator:
         registry.register(DevSimulatorProvider())
 

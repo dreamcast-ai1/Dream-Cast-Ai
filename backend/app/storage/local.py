@@ -50,6 +50,14 @@ class LocalStorage(Storage):
     def read(self, key: str) -> bytes:
         return self._path(key).read_bytes()
 
+    def size(self, key: str) -> int:
+        return self._path(key).stat().st_size
+
+    def read_range(self, key: str, start: int, end: int) -> bytes:
+        with self._path(key).open("rb") as f:
+            f.seek(start)
+            return f.read(end - start + 1)
+
     def exists(self, key: str) -> bool:
         return self._path(key).is_file()
 

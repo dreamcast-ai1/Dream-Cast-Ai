@@ -19,6 +19,10 @@ TEXT_TYPES = {"STORY", "SCRIPT", "LYRICS"}
 MAX_TEXT = 200_000
 
 
+class StoredKey(str):
+    """Marks a storage key (as opposed to a local file path) returned by download()."""
+
+
 def is_text(a: GeneratedAsset) -> bool:
     return a.text_content is not None and not a.file_path
 
@@ -37,9 +41,9 @@ def _title(job: GenerationJob, result: ProviderResult, asset_type: str) -> str:
         return (f"{label} theme" if label else first_line[:60] or "Music")
     if asset_type == "VOICE":
         return (job.refined_prompt or "Voice")[:50]
-    if asset_type == "VIDEO":
+    if asset_type in ("VIDEO", "IMAGE"):
         sentence = re.split(r"(?<=[.!?])\s", (job.original_prompt or "").strip())[0]
-        return (sentence[:67] + "…" if len(sentence) > 70 else sentence) or "Video"
+        return (sentence[:67] + "…" if len(sentence) > 70 else sentence) or asset_type.title()
     if asset_type == "FACE":
         return "Face replacement"
     return (job.original_prompt or BY_ID[job.type].label)[:80]
@@ -194,7 +198,7 @@ def delete(db: Session, a: GeneratedAsset) -> None:
 
 
 GENERATOR_BY_ASSET_TYPE = {"STORY": "story", "SCRIPT": "script", "LYRICS": "lyrics", "MUSIC": "music", "VOICE": "voice",
-                           "VIDEO": "video", "FACE": "face_replacement"}
+                           "VIDEO": "video", "IMAGE": "image", "FACE": "face_replacement"}
 
 
 def regenerate(db: Session, user: User, a: GeneratedAsset) -> GenerationJob:
@@ -221,4 +225,5 @@ def download(a: GeneratedAsset, fmt: str | None) -> tuple[bytes | str, str, str]
     if not a.file_path or not get_storage().exists(a.file_path):
         raise AppError("This asset has no file to download.", 404, "no_file")
     path = get_storage().local_path(a.file_path)
-    return (str(path) if path else get_storage().read(a.file_path)), f"{base}.{a.format or 'bin'}", a.mime_type or "application/octet-stream"
+    # local file: its path; object storage: the key (the router streams it, never loading a whole movie into memory)
+    return (str(path) if path else StoredKey(a.file_path)), f"{base}.{a.format or 'bin'}", a.mime_type or "application/octet-stream"

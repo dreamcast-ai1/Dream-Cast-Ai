@@ -27,17 +27,26 @@ def test_admin_email_gets_admin_role(client, make_user):
 
 
 def test_password_reset_flow(client, make_user):
-    from app.security import create_token
-    from app.db import SessionLocal
-    from app.models import User
-    make_user()
-    with SessionLocal() as db:
-        u = db.query(User).one()
-        token = create_token(u.id, "reset", minutes=5, extra={"h": u.password_hash[-12:]})
-    assert client.post("/api/auth/reset-password", json={"token": token, "password": "newpassword1"}).status_code == 200
-    assert client.post("/api/auth/login", json={"email": "user@example.com", "password": "newpassword1"}).status_code == 200
-    # token is single-use because the hash changed
-    assert client.post("/api/auth/reset-password", json={"token": token, "password": "another-pass1"}).status_code == 400
+    """Reset tokens are emailed, random and single-use (full coverage with a mock mailbox: test_auth_flows.py)."""
+    import re
+    from app.config import get_settings
+    from app.email import EmailProvider, set_email_provider
+
+    class Box(EmailProvider):
+        name, sent = "box", []
+        is_configured = lambda self: True
+        send = lambda self, to, subject, text: self.sent.append((to, text))
+    box = Box()
+    set_email_provider(box)
+    try:
+        make_user()
+        assert client.post("/api/auth/forgot-password", json={"email": "user@example.com"}).status_code == 200
+        token = re.search(r"token=([\w-]+)", box.sent[0][1]).group(1)
+        assert client.post("/api/auth/reset-password", json={"token": token, "password": "newpassword1"}).status_code == 200
+        assert client.post("/api/auth/login", json={"email": "user@example.com", "password": "newpassword1"}).status_code == 200
+        assert client.post("/api/auth/reset-password", json={"token": token, "password": "another-pass1"}).status_code == 400     # single use
+    finally:
+        set_email_provider(None)
 
 
 def test_access_token_cannot_be_used_as_reset_token(client, make_user):

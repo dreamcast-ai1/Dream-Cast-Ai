@@ -177,7 +177,7 @@ export default function Create() {
             {selected.available && !selected.configured && <Alert kind="info"><strong>{selected.config_message}</strong> You can still set up your request, but generating will fail with this message until an administrator configures the provider (see the README).</Alert>}
             <div className="max-w-sm"><SelectField label="Project (optional)" value={projectId} onChange={(e) => { setProjectId(e.target.value); setRefIds([]); setCharIds(null); setRefined(null); setOptions((o) => { const c = { ...o }; ["story_asset_id", "lyrics_asset_id", "script_asset_id", "scene_number"].forEach((k) => delete c[k]); return c; }); }}>
               <option value="">No project</option>{projects.data?.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</SelectField>
-              <p className="mt-1 text-xs text-muted">The result is saved to the project as a new version, and only relevant project context is used.</p></div>
+              <p className="mt-1 text-xs text-muted">The result is saved to the project as a new version, and only relevant project context is used. With no project it is saved in “Quick creations”.</p></div>
             <OptionsForm schema={selected} options={options} projectId={projectId} onChange={(o) => { setOptions(o); setRefined(null); }} />
             {sceneChip && <p className="flex items-center gap-2 text-sm"><span className="rounded-full border border-accent bg-accent/10 px-3 py-1">{sceneChip}</span>
               <button type="button" className="btn-ghost !p-1" aria-label="Remove scene context" onClick={() => { setOptions(({ script_asset_id: _s, scene_number: _n, ...rest }) => rest); setRefined(null); }}><X className="h-4 w-4" /></button></p>}

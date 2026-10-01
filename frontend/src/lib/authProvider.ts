@@ -1,5 +1,7 @@
 /** Thin client for Supabase Auth's REST API (GoTrue). Only used when the backend reports AUTH_PROVIDER=supabase. */
-export interface AuthConfig { provider: "local" | "supabase"; url: string | null; public_key: string | null }
+export interface AuthConfig { provider: "local" | "supabase"; url: string | null; public_key: string | null; google_enabled?: boolean; email_verification?: boolean }
+/** Returned by sign-up when an emailed one-time code must be entered before the account can be used. */
+export interface VerificationInfo { email: string; expires_in: number; resend_after: number }
 
 async function gotrue(cfg: AuthConfig, path: string, body?: unknown, token?: string, method = "POST") {
   const res = await fetch(`${cfg.url}/auth/v1${path}`, {

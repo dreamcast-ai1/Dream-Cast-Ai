@@ -282,6 +282,7 @@ def use_fal(monkeypatch, fake: FakeFal, video=True, face=False, **settings) -> F
         monkeypatch.setattr(s, k, v)
     monkeypatch.setattr(s, "video_poll_seconds", 0.0)
     monkeypatch.setattr(s, "face_poll_seconds", 0.0)
+    monkeypatch.setattr(s, "image_poll_seconds", 0.0)
     monkeypatch.setattr(fal_module, "http_client", _client(fake.handler))
     return fake
 

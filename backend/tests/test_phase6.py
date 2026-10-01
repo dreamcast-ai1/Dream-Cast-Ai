@@ -36,7 +36,9 @@ def test_dev_simulator_can_never_run_in_production(monkeypatch):
 def test_example_env_has_no_secret_values_and_simulator_off():
     values = dict(line.split("=", 1) for line in (REPO / ".env.example").read_text().splitlines() if "=" in line and not line.startswith("#"))
     for key in ("AUTH_SECRET_KEY", "LLM_API_KEY", "MUSIC_API_KEY", "VOICE_API_KEY", "VIDEO_PROVIDER_API_KEY", "FACE_PROVIDER_API_KEY",
-                "RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET", "AUTH_PUBLIC_KEY"):
+                "RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET", "AUTH_PUBLIC_KEY",
+                "SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM_EMAIL", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
+                "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "BREVO_API_KEY"):
         assert values.get(key, "") == "" or values[key].startswith("REPLACE_WITH"), key        # placeholders only
     assert values["ENABLE_DEV_SIMULATOR"] == "false"
 

@@ -39,7 +39,7 @@ def test_generation_endpoints_require_auth(client):
 def test_schema_describes_all_generators(client, make_user):
     h, _ = make_user()
     gens = {g["id"]: g for g in client.get("/api/generate/schema", headers=h).json()["generators"]}
-    assert set(gens) == {"video", "music", "voice", "lyrics", "story", "script", "face_replacement", "ai_avatar", "interactive_avatar"}
+    assert set(gens) == {"video", "image", "music", "voice", "lyrics", "story", "script", "face_replacement", "ai_avatar", "interactive_avatar"}
     assert [f["key"] for f in gens["video"]["fields"]] == ["method", "style", "duration_seconds", "aspect_ratio"]
     assert [f["key"] for f in gens["lyrics"]["fields"]] == ["language"]      # lyrics: prompt + optional language only
     assert gens["face_replacement"]["reference"] == "required"

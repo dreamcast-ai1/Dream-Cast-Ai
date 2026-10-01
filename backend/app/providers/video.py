@@ -78,8 +78,9 @@ class VideoProvider(Provider):
 
 
 class FalVideoProvider(FalQueueProvider, VideoProvider):
-    """fal.ai hosted video models. Defaults target Kling 1.6 (text-to-video and image-to-video, 5 or 10 s clips).
-    Payload field names (prompt, duration, aspect_ratio, image_url) follow the Kling schema; other models may need small changes in
+    """fal.ai hosted video models. Defaults target Kling v3 Standard (text-to-video and image-to-video, durations 3-15 s; the app uses 10).
+    Payload field names (prompt, duration, aspect_ratio, generate_audio, start_image_url) follow the Kling v3 schema as published by fal.ai; older Kling
+    models name the source image `image_url` and have no generate_audio (handled below). Other models may need small changes in
     build_request."""
 
     def __init__(self, settings: Settings | None = None):
@@ -156,10 +157,21 @@ class FalVideoProvider(FalQueueProvider, VideoProvider):
             src = next((r for r in request.reference_assets if (r.get("mime_type") or "").startswith("image/")), None)
             if not src:
                 raise ProviderError(ErrorCode.INVALID_REQUEST, "no source image", message="Choose or upload an image for image-to-video.")
-            payload["image_url"] = data_uri(read_reference(src), src["mime_type"])
-            return self.s.video_provider_i2v_model, payload
+            model = self.s.video_provider_i2v_model
+            payload["start_image_url" if "/v3/" in model else "image_url"] = data_uri(read_reference(src), src["mime_type"])
+            if "/v3/" in model:
+                payload["generate_audio"] = self.s.video_generate_audio
+            return model, payload
         payload["aspect_ratio"] = o.get("aspect_ratio") or "16:9"
+        if "/v3/" in self.model:
+            payload["generate_audio"] = self.s.video_generate_audio
         return self.model, payload
+
+    def download_result(self, external_id: str, request: GenerationRequest):
+        result = super().download_result(external_id, request)
+        used = self.s.video_provider_i2v_model if request.options.get("method") == IMAGE_METHOD else self.model
+        result.meta = {**(result.meta or {}), "model": used}                    # recorded with the asset
+        return result
 
     def output_url(self, result: dict) -> str | None:
         v = result.get("video") or (result.get("videos") or [None])[0] or {}

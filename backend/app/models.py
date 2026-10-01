@@ -19,8 +19,8 @@ class UTCDateTime(TypeDecorator):
         return value
 
     def process_result_value(self, value, dialect):
-        if value is not None and value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
+        if value is not None:
+            value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)    # PostgreSQL answers in the session's zone
         return value
 
 
@@ -48,9 +48,33 @@ class User(Base, TimestampedMixin):
     role: Mapped[str] = mapped_column(String(10), default="USER")  # USER | ADMIN
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_login_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False)           # proven by a one-time code or by Google
+    google_subject_id: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)   # Google's stable user id ("sub")
 
     projects: Mapped[list["Project"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     subscription: Mapped["Subscription | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
+
+
+class EmailVerification(Base, TimestampedMixin):
+    """One sign-up code. Only a keyed hash of the code is stored. A code is single-use: used_at is set when it is spent,
+    replaced (resend) or locked after too many wrong guesses."""
+    __tablename__ = "email_verifications"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    used_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+
+class PasswordResetToken(Base, TimestampedMixin):
+    """A password reset link token. Only the SHA-256 of the token is stored; the token itself exists only in the email."""
+    __tablename__ = "password_reset_tokens"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    used_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
 
 class Project(Base, TimestampedMixin):

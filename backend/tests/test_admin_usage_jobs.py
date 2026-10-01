@@ -27,9 +27,9 @@ def test_admin_stats_users_limits(client, make_user):
 def test_usage_defaults_and_quota(client, make_user):
     h, user = make_user()
     items = {i["generator"]: i for i in client.get("/api/usage", headers=h).json()["items"]}
-    assert items["video"]["limit"] == 3 and items["video"]["used"] == 0 and len(items) == 9
+    assert items["video"]["limit"] == 3 and items["video"]["used"] == 0 and len(items) == 10
     limits = {k: v["limit"] for k, v in items.items()}
-    assert limits == {"video": 3, "music": 3, "voice": 5, "lyrics": 5, "story": 5, "script": 3, "face_replacement": 3,
+    assert limits == {"video": 3, "image": 8, "music": 3, "voice": 5, "lyrics": 5, "story": 5, "script": 3, "face_replacement": 3,
                       "ai_avatar": 3, "interactive_avatar": 12}
     with SessionLocal() as db:
         for _ in range(3):
@@ -64,5 +64,5 @@ def test_admin_sees_failed_jobs(client, make_user):
 def test_unhandled_errors_do_not_leak(client, make_user):
     h, _ = make_user()
     r = client.get("/api/generators", headers=h)
-    assert r.status_code == 200 and len(r.json()) == 9
+    assert r.status_code == 200 and len(r.json()) == 10
     assert client.get("/api/nope", headers=h).json()["error"]["message"]

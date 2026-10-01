@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import get_settings
 from .errors import install_error_handlers
 from .providers import register_default_providers
-from .routers import admin, assets, auth, characters, files, generate, jobs, meta, notifications, payment_webhook, projects, references, scenes, subscription
+from .routers import admin, assets, auth, characters, files, generate, jobs, meta, notifications, google_auth, payment_webhook, projects, references, scenes, subscription
 from .services.worker import WorkerPool
 from .storage import get_storage
 
@@ -17,7 +17,15 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Runs the background worker inside the API process unless WORKER_ENABLED=false (then run `python -m app.worker`)."""
-    get_storage()      # creates the storage folders at startup (a fresh Render disk starts empty)
+    storage = get_storage()      # local: creates the folders (a fresh disk starts empty); object storage: just builds the client
+    s = get_settings()
+    if s.is_production and (s.database_url.startswith("sqlite") or s.storage_backend == "local"):
+        logging.getLogger("dreamcast").warning("Production is using %s: user data is NOT permanent on a host with an ephemeral disk. "
+                                               "Set DATABASE_URL to PostgreSQL and STORAGE_BACKEND=s3.",
+                                               " and ".join(x for x, on in (("SQLite", s.database_url.startswith("sqlite")), ("local file storage", s.storage_backend == "local")) if on))
+    if s.storage_backend == "s3":
+        ok, message = storage.ping()
+        logging.getLogger("dreamcast").log(logging.INFO if ok else logging.ERROR, "object storage check: %s", message)
     pool = None
     if get_settings().worker_enabled:
         pool = WorkerPool()
@@ -41,7 +49,7 @@ def create_app() -> FastAPI:
         """Unauthenticated liveness probe for Render/uptime monitors. Touches nothing (no DB, no providers)."""
         return {"status": "ok"}
 
-    for r in (meta, auth, projects, characters, references, files, assets, generate, jobs, notifications, subscription, payment_webhook, scenes, admin):
+    for r in (meta, auth, google_auth, projects, characters, references, files, assets, generate, jobs, notifications, subscription, payment_webhook, scenes, admin):
         app.include_router(r.router)
     return app
 

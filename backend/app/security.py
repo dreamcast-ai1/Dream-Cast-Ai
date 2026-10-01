@@ -100,4 +100,12 @@ class RateLimiter:
 
 
 auth_rate_limit = RateLimiter(lambda: get_settings().rate_limit_auth_per_minute)
+def _hourly(n: int):
+    # Disabled together with the other auth limits (RATE_LIMIT_AUTH_PER_MINUTE=0), so the same switch covers all of them.
+    return lambda: n if get_settings().rate_limit_auth_per_minute > 0 else 0
+
+
+otp_send_limit = RateLimiter(_hourly(5), window=3600)          # verification emails per account per hour
+otp_verify_limit = RateLimiter(_hourly(10), window=600)        # code guesses per account per 10 minutes
+reset_send_limit = RateLimiter(_hourly(5), window=3600)        # reset emails per account per hour
 login_failure_limit = RateLimiter(lambda: get_settings().rate_limit_auth_per_minute)     # failed logins per account

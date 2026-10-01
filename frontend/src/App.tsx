@@ -8,6 +8,7 @@ import { AuthCallback, ForgotPassword, Login, Register, ResetPassword } from "./
 import Create from "./pages/Create";
 import Dashboard from "./pages/Dashboard";
 import History from "./pages/History";
+import Library from "./pages/Library";
 import JobDetail from "./pages/JobDetail";
 import Landing from "./pages/Landing";
 import NotFound from "./pages/NotFound";
@@ -31,6 +32,7 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/create/:generator?" element={<Create />} />
           <Route path="/history" element={<History />} />
+          <Route path="/library" element={<Library />} />
           <Route path="/history/:jobId" element={<JobDetail />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:projectId" element={<ProjectWorkspace />} />

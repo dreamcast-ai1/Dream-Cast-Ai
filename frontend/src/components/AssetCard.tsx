@@ -9,7 +9,7 @@ import { StatusBadge } from "./ui/feedback";
 /** Compact card for a generated asset in a project. Lists never load media: videos and face results show a small thumbnail only. */
 export function AssetCard({ a }: { a: Asset }) {
   const audio = a.has_file && (a.type === "MUSIC" || a.type === "VOICE");
-  const visual = a.has_file && (a.type === "VIDEO" || a.type === "FACE");
+  const visual = a.has_file && (a.type === "VIDEO" || a.type === "FACE" || a.type === "IMAGE");
   return (
     <li>
       <Link to={`/projects/${a.project_id}/assets/${a.id}`} aria-label={`Open ${ASSET_LABEL[a.type] ?? a.type}: ${a.title}, version ${a.version}`}

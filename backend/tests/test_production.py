@@ -59,8 +59,10 @@ def test_unauthenticated_and_forbidden_responses_are_json_errors(client, make_us
 
 # ------------------------------------------------------------------ configuration
 def test_database_url_from_render_style_postgres_scheme_is_normalised():
-    assert Settings(database_url="postgres://u:p@host/db").database_url == "postgresql://u:p@host/db"
-    assert Settings(database_url="postgresql://u:p@host/db").database_url == "postgresql://u:p@host/db"
+    # Render/Heroku "postgres://" and a bare "postgresql://" both become the psycopg 3 driver form; an explicit driver is kept
+    assert Settings(database_url="postgres://u:p@host/db").database_url == "postgresql+psycopg://u:p@host/db"
+    assert Settings(database_url="postgresql://u:p@host/db").database_url == "postgresql+psycopg://u:p@host/db"
+    assert Settings(database_url="postgresql+psycopg://u:p@host/db").database_url == "postgresql+psycopg://u:p@host/db"
 
 
 def test_production_refuses_the_development_secret():

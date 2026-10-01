@@ -14,6 +14,8 @@ def make_engine(url: str):
     kwargs = {}
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
+    else:      # PostgreSQL: small pool (hosted free plans allow few connections), recycled so idle connections never go stale
+        kwargs.update(pool_size=5, max_overflow=5, pool_recycle=300, connect_args={"options": "-c timezone=utc"})
     engine = create_engine(url, pool_pre_ping=True, **kwargs)
     if url.startswith("sqlite"):
         @event.listens_for(engine, "connect")

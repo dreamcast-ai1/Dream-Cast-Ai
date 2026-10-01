@@ -20,6 +20,9 @@ EMPHASIS = {
     "video": ("Write the video prompt as these labelled lines, one per line: Subject:, Action:, Environment:, Lighting:, Camera:, Motion:, "
               "Mood:, Style:. Be concrete and visual. Keep the user's concept: do not invent major characters or plot events, and do not "
               "change the stated style, duration or aspect ratio. Use provided character, scene and reference details only where relevant.", 150),
+    "image": ("Write one image prompt as comma-separated visual descriptors: subject, setting, composition, lighting, colours, mood and style. "
+              "Be concrete and visual. Keep the user's concept; do not add characters or text overlays, and do not change the stated style "
+              "or aspect ratio.", 90),
     "music": ("Write a compact music-generation prompt: comma-separated descriptors of genre, mood, instruments, energy, tempo and "
               "atmosphere, plus how the piece develops. Instrumental only: no lyrics, no artist names.", 60),
     "voice": ("The user's text is the script to be spoken: keep the spoken words verbatim. Add brief delivery direction "
@@ -64,7 +67,8 @@ def template_refine(generator: str, prompt: str, options: dict, context: dict, a
         lines.append(f"Requirements: {opts}." + (" " + " ".join(adjustments) if adjustments else ""))
     if ctx := ctx_service.context_text(context):
         lines.append("Project context:\n" + ctx)
-    guidance = {"video": "Describe subject, action, environment, camera, lighting, style, motion and composition clearly; stay within the scene requested.",
+    guidance = {"image": "Describe subject, setting, composition, lighting, colours, mood and style clearly; keep to the image requested.",
+                "video": "Describe subject, action, environment, camera, lighting, style, motion and composition clearly; stay within the scene requested.",
                 "music": "Specify genre, mood, instrumentation, energy, tempo and atmosphere.",
                 "voice": "Speak the text exactly as written with the requested delivery.",
                 "story": "Keep to the requested premise and tone; do not add unrequested plot elements.",

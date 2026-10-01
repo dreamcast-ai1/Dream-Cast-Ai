@@ -12,8 +12,8 @@ export function dialogueOf(sceneBody: string): string {
 
 export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "asset";
 
-export const ASSET_LABEL: Record<string, string> = { STORY: "Story", SCRIPT: "Script", LYRICS: "Lyrics", MUSIC: "Music", VOICE: "Voice", VIDEO: "Video", AVATAR: "Avatar", FACE: "Face" };
-export const ASSET_EMOJI: Record<string, string> = { STORY: "📖", SCRIPT: "📝", LYRICS: "✍️", MUSIC: "🎵", VOICE: "🎤", VIDEO: "🎬", AVATAR: "🧑", FACE: "👤" };
+export const ASSET_LABEL: Record<string, string> = { STORY: "Story", SCRIPT: "Script", LYRICS: "Lyrics", MUSIC: "Music", VOICE: "Voice", VIDEO: "Video", IMAGE: "Image", AVATAR: "Avatar", FACE: "Face" };
+export const ASSET_EMOJI: Record<string, string> = { STORY: "📖", SCRIPT: "📝", LYRICS: "✍️", MUSIC: "🎵", VOICE: "🎤", VIDEO: "🎬", IMAGE: "🖼️", AVATAR: "🧑", FACE: "👤" };
 
 export function formatDuration(seconds: number | null): string {
   if (!seconds) return "";

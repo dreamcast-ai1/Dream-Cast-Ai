@@ -19,14 +19,15 @@ const SECTIONS: SectionDef[] = [
   { id: "story", label: "Story", assetType: "STORY", generator: "story", empty: "No stories yet.", cta: "Create Story", emoji: "📖" },
   { id: "script", label: "Script", assetType: "SCRIPT", generator: "script", empty: "No scripts yet.", cta: "Create Script", emoji: "📝" },
   { id: "videos", label: "Videos", assetType: "VIDEO", generator: "video", empty: "No videos yet.", cta: "Create Video", emoji: "🎬" },
+  { id: "images", label: "Images", assetType: "IMAGE", generator: "image", empty: "No images yet.", cta: "Create Image", emoji: "🖼️" },
   { id: "music", label: "Music", assetType: "MUSIC", generator: "music", empty: "No music yet.", cta: "Create Music", emoji: "🎵" },
   { id: "voice", label: "Voice", assetType: "VOICE", generator: "voice", empty: "No voice tracks yet.", cta: "Create Voice", emoji: "🎤" },
   { id: "lyrics", label: "Lyrics", assetType: "LYRICS", generator: "lyrics", empty: "No lyrics yet.", cta: "Create Lyrics", emoji: "✍️" },
   { id: "face", label: "Face", assetType: "FACE", generator: "face_replacement", empty: "No face replacements yet.", cta: "Create Face Replacement", emoji: "👤" },
   { id: "avatars", label: "Avatars", assetType: "AVATAR", generator: "ai_avatar", empty: "No avatars yet.", cta: "Create Avatar", emoji: "🧑" },
 ];
-const TAB_ORDER = ["overview", "assets", "story", "script", "movie", "videos", "music", "voice", "lyrics", "face", "characters", "avatars", "references", "generations"];
-const COUNT_KEY: Record<string, string> = { movie: "scenes", story: "story", script: "script", videos: "video", music: "music", voice: "voice", lyrics: "lyrics", characters: "characters", face: "face", avatars: "avatar", references: "references" };
+const TAB_ORDER = ["overview", "assets", "story", "script", "movie", "videos", "images", "music", "voice", "lyrics", "face", "characters", "avatars", "references", "generations"];
+const COUNT_KEY: Record<string, string> = { movie: "scenes", story: "story", script: "script", videos: "video", images: "image", music: "music", voice: "voice", lyrics: "lyrics", characters: "characters", face: "face", avatars: "avatar", references: "references" };
 
 export default function ProjectWorkspace() {
   const { projectId } = useParams();

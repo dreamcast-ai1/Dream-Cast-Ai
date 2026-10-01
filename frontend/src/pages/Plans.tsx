@@ -9,7 +9,7 @@ import { formatDate, formatPrice } from "../lib/format";
 import type { CheckoutOrder, CurrentSubscription, PlanInfo, UsageItem } from "../lib/types";
 
 // What each plan allows, in film terms. The numbers come from the server; nothing is hard-coded here.
-const ROWS: [string, string][] = [["video", "🎥 Video generations"], ["music", "🎵 Music generations"], ["face_replacement", "🎭 Face generations"],
+const ROWS: [string, string][] = [["video", "🎥 Video generations"], ["image", "🖼️ Image generations"], ["music", "🎵 Music generations"], ["face_replacement", "🎭 Face generations"],
   ["story", "📖 Story generations"], ["script", "📝 Script generations"], ["voice", "🎤 Voice generations"]];
 
 interface RazorpayResponse { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }

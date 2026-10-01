@@ -71,6 +71,10 @@ SPECS: dict[str, Spec] = {
         "What should happen in the video?", "e.g. A warrior walks through an ancient city at night while smoke moves through the streets",
         reference="optional", reference_label="Reference image", uses_characters=True, ui="video",
         note="Each generation makes exactly one video. Reference images and characters are described in the prompt; only the source image of an image-to-video is sent to the provider."),
+    "image": Spec(
+        [STYLE, Field("aspect_ratio", "Aspect ratio", choices=list(ASPECT_RATIOS), default="1:1")],
+        "What should the image show?", "e.g. A lone warrior standing at the gate of a ruined castle at sunrise, mist rolling over the hills",
+        uses_characters=True, note="Each generation makes exactly one image."),
     "music": Spec(
         [MUSIC_GENRE, Field("mood", "Mood", choices=["Happy", "Sad", "Epic", "Romantic", "Suspense", "Peaceful", "Dark", "Energetic", "Emotional"]),
          Field("duration_seconds", "Duration", "duration", [str(d) for d in ALLOWED_DURATIONS], DEFAULT_DURATION,
