@@ -1,7 +1,7 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import Character, GeneratedAsset, Project, ReferenceAsset
+from ..models import Character, GeneratedAsset, Project, ReferenceAsset, Scene
 from ..schemas import CharacterOut, ProjectDetail, ProjectOut, ReferenceOut
 from ..storage import get_storage
 
@@ -15,7 +15,8 @@ def project_out(p: Project) -> ProjectOut:
 
 def project_detail(db: Session, p: Project) -> ProjectDetail:
     counts = {"characters": db.scalar(select(func.count()).select_from(Character).where(Character.project_id == p.id)) or 0,
-              "references": db.scalar(select(func.count()).select_from(ReferenceAsset).where(ReferenceAsset.project_id == p.id)) or 0}
+              "references": db.scalar(select(func.count()).select_from(ReferenceAsset).where(ReferenceAsset.project_id == p.id)) or 0,
+              "scenes": db.scalar(select(func.count()).select_from(Scene).where(Scene.project_id == p.id)) or 0}
     rows = db.execute(select(GeneratedAsset.type, func.count()).where(GeneratedAsset.project_id == p.id)
                       .group_by(GeneratedAsset.type)).all()
     counts.update({t.lower(): n for t, n in rows})

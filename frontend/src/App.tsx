@@ -11,6 +11,7 @@ import History from "./pages/History";
 import JobDetail from "./pages/JobDetail";
 import Landing from "./pages/Landing";
 import NotFound from "./pages/NotFound";
+import Plans from "./pages/Plans";
 import ProjectWorkspace from "./pages/ProjectWorkspace";
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/projects/:projectId" element={<ProjectWorkspace />} />
           <Route path="/projects/:projectId/assets/:assetId" element={<AssetDetail />} />
           <Route path="/usage" element={<Usage />} />
+          <Route path="/plans" element={<Plans />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/account" element={<Account />} />
           <Route element={<RequireAdmin />}><Route path="/admin" element={<Admin />} /></Route>

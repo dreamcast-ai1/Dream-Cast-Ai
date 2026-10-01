@@ -8,9 +8,10 @@ import { useAsync } from "../hooks/useAsync";
 import { api } from "../lib/api";
 import { formatBytes, titleCase } from "../lib/format";
 import type { ProviderInfo, UsageItem } from "../lib/types";
+import { PlanSummary } from "../components/PlanSummary";
 import { AccountPanel } from "./Account";
 
-const TABS = [{ id: "account", label: "Account" }, { id: "appearance", label: "Appearance" }, { id: "api", label: "API Configuration" },
+const TABS = [{ id: "account", label: "Account" }, { id: "plan", label: "Plan" }, { id: "appearance", label: "Appearance" }, { id: "api", label: "API Configuration" },
   { id: "usage", label: "Usage" }, { id: "storage", label: "Storage" }, { id: "about", label: "About" }];
 
 function Appearance() {
@@ -83,7 +84,7 @@ export default function Settings() {
       <PageHeader title="Settings" />
       <Tabs label="Settings sections" tabs={TABS} active={tab} onChange={(id) => setParams({ tab: id }, { replace: true })} />
       <TabPanel id={tab}>
-        {tab === "account" && <AccountPanel />}{tab === "appearance" && <Appearance />}{tab === "api" && <ApiConfig />}
+        {tab === "account" && <AccountPanel />}{tab === "plan" && <PlanSummary />}{tab === "appearance" && <Appearance />}{tab === "api" && <ApiConfig />}
         {tab === "usage" && <UsageTab />}{tab === "storage" && <StorageTab />}{tab === "about" && <About />}
       </TabPanel>
     </div>

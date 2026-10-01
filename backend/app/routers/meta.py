@@ -7,7 +7,7 @@ from ..db import get_db
 from ..deps import current_user
 from ..generators import GENERATORS, PROJECT_STATUSES, REFERENCE_TYPES
 from ..models import ReferenceAsset, User
-from ..services import provider_settings, usage
+from ..services import provider_settings, subscriptions, usage
 
 router = APIRouter(prefix="/api", tags=["meta"])
 
@@ -32,7 +32,9 @@ def meta(_: User = Depends(current_user)):
 
 @router.get("/usage")
 def my_usage(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    return {"period": "today", "items": usage.summary(db, user.id)}
+    plan, _ = subscriptions.plan_for_user(db, user)
+    return {"period": "today" if plan.usage_period == "day" else "this month", "plan_id": plan.id, "plan_name": plan.name,
+            "resets_at": usage.window_end(plan.usage_period).isoformat(), "items": usage.summary(db, user.id)}
 
 
 @router.get("/settings/providers")

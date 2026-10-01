@@ -60,7 +60,8 @@ def _lineage(db: Session, job: GenerationJob, asset_type: str) -> tuple[str | No
 def create_from_result(db: Session, job: GenerationJob, result: ProviderResult) -> GeneratedAsset:
     asset_type = BY_ID[job.type].asset_type
     lineage, version = _lineage(db, job, asset_type)
-    meta = {**result.meta, "simulated": result.simulated, "options": {k: v for k, v in job.options.items() if k != "character_ids"},
+    scene_id = (job.input_meta or {}).get("scene_id")
+    meta = {**result.meta, **({"scene_id": scene_id} if scene_id else {}), "simulated": result.simulated, "options": {k: v for k, v in job.options.items() if k != "character_ids"},
             "original_prompt": job.original_prompt}
     text = result.text
     asset = GeneratedAsset(project_id=job.project_id, user_id=job.user_id, job_id=job.id, type=asset_type,
@@ -82,6 +83,9 @@ def create_from_result(db: Session, job: GenerationJob, result: ProviderResult) 
     if not asset.lineage_id:
         asset.lineage_id = asset.id
     db.commit()
+    if scene_id and asset_type == "VIDEO":
+        from . import scenes
+        scenes.attach_video(db, scene_id, asset)
     return asset
 
 

@@ -10,6 +10,7 @@ os.environ.update({
     "AUTH_SECRET_KEY": "test-secret-key-test-secret-key-1234",
     "ADMIN_EMAILS": "boss@example.com",
     "RATE_LIMIT_AUTH_PER_MINUTE": "0",
+    "CHECKOUT_RATE_LIMIT_PER_MINUTE": "0",
     "REFINE_RATE_LIMIT_PER_MINUTE": "0",
     "WORKER_ENABLED": "false",          # tests drive the runner directly (deterministic, no threads)
     "ENABLE_DEV_SIMULATOR": "true",

@@ -236,6 +236,12 @@ class AdminUserPatch(BaseModel):
 
 class LimitsIn(BaseModel):
     limits: dict[str, int]
+    plan: str = "trailer"
+
+
+class SubscriptionPatch(BaseModel):
+    plan_id: str
+    days: int | None = Field(default=None, ge=1, le=3650)     # None = no expiry
 
 
 # ---- generation engine

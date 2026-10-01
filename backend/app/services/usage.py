@@ -1,61 +1,66 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..generators import BY_ID, GENERATORS
-from ..models import AppSetting, UsageRecord
-
-LIMITS_KEY = "daily_limits"
-
-
-def default_limits() -> dict[str, int]:
-    return {g.id: g.default_daily_limit for g in GENERATORS}
+from ..models import UsageRecord
+from ..plans import DEFAULT_PLAN_ID
+from . import subscriptions
 
 
-def get_limits(db: Session) -> dict[str, int]:
-    row = db.get(AppSetting, LIMITS_KEY)
-    limits = default_limits()
-    if row:
-        limits.update({k: int(v) for k, v in row.value.items() if k in BY_ID})
-    return limits
+def get_limits(db: Session, plan_id: str = DEFAULT_PLAN_ID) -> dict[str, int]:
+    """Limits of one plan (admin overrides included). Kept for the admin screens; user-facing checks use limits_for_user."""
+    from ..plans import get_plan
+    return subscriptions.plan_limits(db, get_plan(plan_id))
 
 
-def set_limits(db: Session, new: dict[str, int]) -> dict[str, int]:
-    limits = get_limits(db)
-    limits.update({k: max(0, int(v)) for k, v in new.items() if k in BY_ID})
-    row = db.get(AppSetting, LIMITS_KEY)
-    if row:
-        row.value = limits
-    else:
-        db.add(AppSetting(key=LIMITS_KEY, value=limits))
-    db.commit()
-    return limits
+def set_limits(db: Session, new: dict[str, int], plan_id: str = DEFAULT_PLAN_ID) -> dict[str, int]:
+    return subscriptions.set_plan_limits(db, plan_id, new)
 
 
-def _today_start() -> datetime:
-    return datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+def window_start(period: str) -> datetime:
+    now = datetime.now(timezone.utc)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return start.replace(day=1) if period == "month" else start
 
 
-def used_today(db: Session, user_id: str) -> dict[str, int]:
+def window_end(period: str) -> datetime:
+    start = window_start(period)
+    if period == "month":
+        return (start.replace(day=28) + timedelta(days=4)).replace(day=1)
+    return start + timedelta(days=1)
+
+
+def used_in_period(db: Session, user_id: str, period: str) -> dict[str, int]:
     rows = db.execute(
         select(UsageRecord.generator_type, func.coalesce(func.sum(UsageRecord.request_count), 0))
-        .where(UsageRecord.user_id == user_id, UsageRecord.created_at >= _today_start())
+        .where(UsageRecord.user_id == user_id, UsageRecord.created_at >= window_start(period))
         .group_by(UsageRecord.generator_type)
     ).all()
     return {g: int(n) for g, n in rows}
 
 
+def used_today(db: Session, user_id: str) -> dict[str, int]:
+    """Usage in the user's plan period (name kept: the default period is a day)."""
+    return used_in_period(db, user_id, subscriptions.plan_for_user_id(db, user_id).usage_period)
+
+
 def summary(db: Session, user_id: str) -> list[dict]:
-    limits, used = get_limits(db), used_today(db, user_id)
-    return [
-        {"generator": g.id, "label": g.label, "emoji": g.emoji, "used": used.get(g.id, 0), "limit": limits[g.id]}
-        for g in GENERATORS
-    ]
+    plan = subscriptions.plan_for_user_id(db, user_id)
+    limits, used = subscriptions.plan_limits(db, plan), used_in_period(db, user_id, plan.usage_period)
+    return [{"generator": g.id, "label": g.label, "emoji": g.emoji, "used": used.get(g.id, 0), "limit": limits[g.id],
+             "remaining": max(0, limits[g.id] - used.get(g.id, 0))} for g in GENERATORS]
+
+
+def remaining(db: Session, user_id: str, generator: str) -> int:
+    plan = subscriptions.plan_for_user_id(db, user_id)
+    return max(0, subscriptions.plan_limits(db, plan)[generator] - used_in_period(db, user_id, plan.usage_period).get(generator, 0))
 
 
 def has_quota(db: Session, user_id: str, generator: str) -> bool:
-    return used_today(db, user_id).get(generator, 0) < get_limits(db)[generator]
+    """The only quota check; it runs on the server when a job is created, so the UI can't be bypassed by calling the API directly."""
+    return remaining(db, user_id, generator) > 0
 
 
 def record(db: Session, user_id: str, generator: str, *, provider: str | None = None, status: str = "SUCCEEDED",
@@ -94,10 +99,10 @@ def settle(db: Session, job_id: str, *, refund: bool, provider: str | None = Non
 
 def provider_used_today(db: Session, provider: str) -> int:
     return int(db.scalar(select(func.coalesce(func.sum(UsageRecord.request_count), 0))
-                         .where(UsageRecord.provider == provider, UsageRecord.created_at >= _today_start())) or 0)
+                         .where(UsageRecord.provider == provider, UsageRecord.created_at >= window_start("day"))) or 0)
 
 
 def count_refinement(db: Session, user_id: str) -> int:
     return int(db.scalar(select(func.coalesce(func.sum(UsageRecord.request_count), 0))
                          .where(UsageRecord.user_id == user_id, UsageRecord.generator_type == "refinement",
-                                UsageRecord.created_at >= _today_start())) or 0)
+                                UsageRecord.created_at >= window_start("day"))) or 0)

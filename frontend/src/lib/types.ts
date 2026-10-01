@@ -38,7 +38,28 @@ export interface RefineResult {
 }
 export interface Notification { id: string; type: string; title: string; message: string; is_read: boolean; job_id: string | null; project_id: string | null; asset_id: string | null; created_at: string }
 export interface Generator { id: string; label: string; emoji: string; description: string; section: string; available: boolean }
-export interface UsageItem { generator: string; label: string; emoji: string; used: number; limit: number }
+export interface UsageItem { generator: string; label: string; emoji: string; used: number; limit: number; remaining?: number }
+export interface PlanInfo {
+  id: string; name: string; tagline: string; description: string; price_minor: number; currency: string; billing_period: string; usage_period: string;
+  limits: Record<string, number>; features: { max_video_seconds: number; image_to_video: boolean; face_replacement: boolean };
+}
+export interface CurrentSubscription {
+  plan: PlanInfo; payments_enabled: boolean;
+  subscription: { plan_id: string; effective_plan_id: string; status: string; started_at: string; expires_at: string | null; payment_provider: string | null };
+}
 export interface ProviderInfo { name: string; label: string; info: { model?: string; i2v_model?: string | null; durations?: number[]; aspect_ratios?: string[]; image_to_video?: boolean; key_configured?: boolean; languages?: string[] }; capability: string; generators: string[]; configured: boolean; problems: string[]; simulated: boolean; supports_cancel: boolean; enabled: boolean; daily_cap?: number | null; used_today?: number; provider_quota: string }
-export interface AdminUser extends User { generations: number; requests: number }
+export interface AdminUser extends User { generations: number; requests: number; plan_id: string; subscription_status: string; subscription_expires_at: string | null; used_today: number; payment_status: string | null }
 export interface AdminStats { total_users: number; active_users: number; total_generations: number; failed_generations: number; api_usage: number; by_generator: Record<string, number> }
+export interface CheckoutOrder { order_id: string; amount: number; currency: string; key_id: string; plan: { id: string; name: string }; user_email: string; user_name: string }
+export interface SceneVideo { asset_id: string; url: string; thumbnail_url: string | null; duration_seconds: number | null }
+export interface Scene {
+  id: string; project_id: string; number: number; title: string; description: string; script: string; character_ids: string[]; characters: string[];
+  visual_prompt: string; duration_seconds: number; status: "DRAFT" | "GENERATING" | "READY" | "FAILED"; video: SceneVideo | null;
+  assets: { id: string; version: number; created_at: string; selected: boolean }[];
+  job: { id: string; status: string; stage: string; error_message: string | null } | null; notes?: string[];
+}
+export interface MovieState {
+  scenes: { scene_id: string; number: number; title: string; ready: boolean; duration_seconds: number | null }[];
+  missing: string[]; can_assemble: boolean; total_seconds: number;
+  active_job: { id: string; status: string; stage: string } | null; movie: Asset | null;
+}

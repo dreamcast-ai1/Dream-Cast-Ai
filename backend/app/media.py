@@ -28,6 +28,7 @@ class MediaInfo:
     duration: float | None = None
     width: int | None = None
     height: int | None = None
+    has_audio: bool = False
 
     @property
     def aspect_ratio(self) -> str | None:
@@ -53,7 +54,7 @@ def probe(path: str | Path) -> MediaInfo | None:
         return None
     d = _DURATION.search(out)
     duration = int(d.group(1)) * 3600 + int(d.group(2)) * 60 + float(d.group(3)) if d else None
-    return MediaInfo(duration, int(v.group(1)), int(v.group(2)))
+    return MediaInfo(duration, int(v.group(1)), int(v.group(2)), has_audio=bool(re.search(r"Stream #\S+.*?Audio:", out)))
 
 
 def make_thumbnail(src: str | Path, dest: str | Path, width: int = 480) -> bool:

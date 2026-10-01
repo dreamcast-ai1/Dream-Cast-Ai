@@ -6,10 +6,11 @@ from ..db import get_db
 from ..deps import admin_user
 from ..errors import AppError, NotFound
 from ..generators import GENERATORS
-from ..models import GenerationJob, UsageRecord, User
+from ..models import GenerationJob, Payment, Subscription, UsageRecord, User
+from ..plans import DEFAULT_PLAN_ID, PLANS, get_plan, public_plans
 from ..providers import registry
-from ..schemas import AdminUserPatch, JobOut, LimitsIn, ProviderPatch, UserOut
-from ..services import provider_settings, usage
+from ..schemas import AdminUserPatch, JobOut, LimitsIn, ProviderPatch, SubscriptionPatch, UserOut
+from ..services import provider_settings, subscriptions, usage
 
 # Every route in this router requires an ADMIN, enforced server-side.
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(admin_user)])
@@ -36,8 +37,16 @@ def users(db: Session = Depends(get_db)):
     reqs = dict(db.execute(select(UsageRecord.user_id, func.coalesce(func.sum(UsageRecord.request_count), 0))
                            .group_by(UsageRecord.user_id)).all())
     rows = db.scalars(select(User).order_by(User.created_at.desc())).all()
-    return [{**UserOut.model_validate(u).model_dump(), "generations": gens.get(u.id, 0), "requests": reqs.get(u.id, 0)}
-            for u in rows]
+    subs = {u: (pid, st, exp) for u, pid, st, exp in db.execute(select(Subscription.user_id, Subscription.plan_id, Subscription.status, Subscription.expires_at)).all()}
+    paid = {}                                    # newest payment status per user
+    for uid, status in db.execute(select(Payment.user_id, Payment.status).order_by(Payment.created_at)).all():
+        paid[uid] = status
+    today = dict(db.execute(select(UsageRecord.user_id, func.coalesce(func.sum(UsageRecord.request_count), 0))
+                            .where(UsageRecord.created_at >= usage.window_start("day")).group_by(UsageRecord.user_id)).all())
+    return [{**UserOut.model_validate(u).model_dump(), "generations": gens.get(u.id, 0), "requests": reqs.get(u.id, 0),
+             "plan_id": get_plan(subs[u.id][0]).id if u.id in subs else DEFAULT_PLAN_ID,
+             "subscription_status": subs[u.id][1] if u.id in subs else "ACTIVE", "subscription_expires_at": subs[u.id][2] if u.id in subs else None,
+             "used_today": int(today.get(u.id, 0)), "payment_status": paid.get(u.id)} for u in rows]
 
 
 @router.patch("/users/{user_id}", response_model=UserOut)
@@ -56,17 +65,33 @@ def patch_user(user_id: str, body: AdminUserPatch, admin: User = Depends(admin_u
 
 
 @router.get("/limits")
-def get_limits(db: Session = Depends(get_db)):
-    limits = usage.get_limits(db)
-    return {"items": [{"generator": g.id, "label": g.label, "emoji": g.emoji, "limit": limits[g.id]} for g in GENERATORS]}
+def get_limits(plan: str = DEFAULT_PLAN_ID, db: Session = Depends(get_db)):
+    """Generation allowance of one plan (default: the free Trailer plan, which is what this screen always edited)."""
+    if plan not in PLANS:
+        raise NotFound("Plan not found.")
+    limits = usage.get_limits(db, plan)
+    return {"plan": plan, "plans": [{"id": p.id, "name": p.name} for p in public_plans()],
+            "items": [{"generator": g.id, "label": g.label, "emoji": g.emoji, "limit": limits[g.id]} for g in GENERATORS]}
 
 
 @router.put("/limits")
 def put_limits(body: LimitsIn, db: Session = Depends(get_db)):
     if any(v < 0 or v > 100000 for v in body.limits.values()):
         raise AppError("Limits must be between 0 and 100000.", 422, "validation_error")
-    usage.set_limits(db, body.limits)
-    return get_limits(db)
+    if body.plan not in PLANS:
+        raise NotFound("Plan not found.")
+    usage.set_limits(db, body.limits, body.plan)
+    return get_limits(body.plan, db)
+
+
+@router.patch("/users/{user_id}/subscription")
+def set_subscription(user_id: str, body: SubscriptionPatch, db: Session = Depends(get_db)):
+    """Manual grant for demos/support. This is NOT a payment: it records provider 'admin' and charges nobody."""
+    target = db.get(User, user_id)
+    if not target:
+        raise NotFound("User not found.")
+    sub = subscriptions.set_user_plan(db, target, body.plan_id, days=body.days)
+    return {"plan_id": sub.plan_id, "status": sub.status, "expires_at": sub.expires_at}
 
 
 @router.get("/jobs", response_model=list[JobOut])

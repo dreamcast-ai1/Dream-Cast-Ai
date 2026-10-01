@@ -13,6 +13,7 @@ import { Characters } from "./project/Characters";
 import { References } from "./project/References";
 import { AllAssets, AssetSection, type SectionDef } from "./project/SectionEmpty";
 import { Generations } from "./project/Generations";
+import { Movie } from "./project/Movie";
 
 const SECTIONS: SectionDef[] = [
   { id: "story", label: "Story", assetType: "STORY", generator: "story", empty: "No stories yet.", cta: "Create Story", emoji: "📖" },
@@ -24,8 +25,8 @@ const SECTIONS: SectionDef[] = [
   { id: "face", label: "Face", assetType: "FACE", generator: "face_replacement", empty: "No face replacements yet.", cta: "Create Face Replacement", emoji: "👤" },
   { id: "avatars", label: "Avatars", assetType: "AVATAR", generator: "ai_avatar", empty: "No avatars yet.", cta: "Create Avatar", emoji: "🧑" },
 ];
-const TAB_ORDER = ["overview", "assets", "story", "script", "videos", "music", "voice", "lyrics", "face", "characters", "avatars", "references", "generations"];
-const COUNT_KEY: Record<string, string> = { story: "story", script: "script", videos: "video", music: "music", voice: "voice", lyrics: "lyrics", characters: "characters", face: "face", avatars: "avatar", references: "references" };
+const TAB_ORDER = ["overview", "assets", "story", "script", "movie", "videos", "music", "voice", "lyrics", "face", "characters", "avatars", "references", "generations"];
+const COUNT_KEY: Record<string, string> = { movie: "scenes", story: "story", script: "script", videos: "video", music: "music", voice: "voice", lyrics: "lyrics", characters: "characters", face: "face", avatars: "avatar", references: "references" };
 
 export default function ProjectWorkspace() {
   const { projectId } = useParams();
@@ -82,6 +83,7 @@ export default function ProjectWorkspace() {
                 <li key={t.id}><button className="flex w-full justify-between hover:text-accent" onClick={() => setParams({ tab: t.id })}><span>{t.label}</span><span className="text-muted">{t.badge ?? 0}</span></button></li>))}</ul></section>
           </div>)}
         {SECTIONS.filter((s) => s.id === tab).map((s) => <AssetSection key={s.id} projectId={project.id} section={s} />)}
+        {tab === "movie" && <Movie projectId={project.id} onChanged={reload} />}
         {tab === "characters" && <Characters projectId={project.id} onChanged={reload} />}
         {tab === "assets" && <AllAssets projectId={project.id} />}
         {tab === "generations" && <Generations projectId={project.id} />}

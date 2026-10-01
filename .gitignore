@@ -10,7 +10,7 @@ venv/
 .pytest_cache/
 *.db
 *.db-journal
-/storage/
+/storage/*
 !/storage/.gitkeep
 !backend/app/storage/
 .DS_Store

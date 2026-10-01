@@ -11,7 +11,8 @@ from ..deps import current_user
 from ..errors import AppError, Unauthorized
 from ..models import User
 from ..schemas import ForgotIn, LoginIn, ProfileIn, RegisterIn, ResetIn, TokenOut, UserOut
-from ..security import auth_rate_limit, create_token, decode_local_token, hash_password, verify_password
+from ..services import subscriptions
+from ..security import auth_rate_limit, create_token, login_failure_limit, decode_local_token, hash_password, verify_password
 
 log = logging.getLogger("dreamcast")
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -42,14 +43,19 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
                 last_login_at=datetime.now(timezone.utc))
     db.add(user)
     db.commit()
+    subscriptions.ensure_subscription(db, user)
     return TokenOut(access_token=create_token(user.id), user=user)
 
 
 @router.post("/login", response_model=TokenOut, dependencies=[Depends(auth_rate_limit)])
 def login(body: LoginIn, db: Session = Depends(get_db)):
     _require_local()
-    user = db.scalars(select(User).where(User.email == body.email.lower())).first()
+    email = body.email.lower()
+    if login_failure_limit.blocked(f"login:{email}"):
+        raise AppError("Too many attempts. Please wait a minute and try again.", 429, "rate_limited")
+    user = db.scalars(select(User).where(User.email == email)).first()
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
+        login_failure_limit.hit(f"login:{email}")
         raise Unauthorized("Incorrect email or password.")
     if not user.is_active:
         raise AppError("This account has been disabled.", 403, "account_disabled")

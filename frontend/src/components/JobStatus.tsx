@@ -8,10 +8,12 @@ const WORDS: Step[] = [{ label: "Queued", stages: ["QUEUED", "RETRYING"] }, { la
 const REMOTE: Step[] = [{ label: "Queued", stages: ["QUEUED", "RETRYING"] }, { label: "Preparing", stages: ["PREPARING"] },
   { label: "Submitting", stages: ["SUBMITTING"] }, { label: "Provider processing", stages: ["GENERATING"] },
   { label: "Downloading", stages: ["DOWNLOADING"] }, { label: "Storing", stages: ["STORING", "PROCESSING"] }];
+const MOVIE: Step[] = [WORDS[0], WORDS[1], { label: "Assembling", stages: ["ASSEMBLING"] }, { label: "Finalizing", stages: ["FINALIZING", "STORING", "PROCESSING"] }];
 const ONE_CALL: Step[] = [WORDS[0], WORDS[1], { label: "Provider processing", stages: ["GENERATING"] }, WORDS[3]];
 
 /** Which stages a generator really goes through (matches what the worker reports). */
 function flowFor(type?: string): Step[] {
+  if (type === "movie") return MOVIE;
   if (type === "video" || type === "face_replacement") return REMOTE;
   if (type === "music" || type === "voice") return ONE_CALL;
   return WORDS;
@@ -36,8 +38,8 @@ export function JobStatus({ job, title, type }: { job: Pick<Job, "status" | "sta
     <div>
       {title && <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">{title}</p>}
       <ol aria-label="Generation progress" className="space-y-2">
-        {row("Prompt refined", "done")}
-        {row("Job submitted", "done")}
+        {type !== "movie" && row("Prompt refined", "done")}
+        {row(type === "movie" ? "Assembly requested" : "Job submitted", "done")}
         {failed || cancelled ? row(failed ? "Failed" : "Cancelled", failed ? "failed" : "stopped")
           : steps.map((s, i) => row(i === 0 && job.status === "RETRYING" ? "Retrying" : s.label, done || i < current ? "done" : i === current ? "active" : "todo"))}
         {!failed && !cancelled && row("Completed", done ? "done" : "todo")}

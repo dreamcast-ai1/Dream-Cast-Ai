@@ -9,6 +9,9 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 BACKEND_DIR = ROOT_DIR / "backend"
 
 INSECURE_DEFAULT_SECRET = "dev-only-insecure-secret-change-me-please-32b"
+LOCAL_FRONTEND = "http://localhost:5173"
+PLACEHOLDER_PREFIX = "REPLACE_WITH"      # values in .env.example; a copied-but-unfilled placeholder must count as "not set"
+MIN_PRODUCTION_SECRET_LENGTH = 32
 
 
 class Settings(BaseSettings):
@@ -16,8 +19,23 @@ class Settings(BaseSettings):
 
     app_env: str = "development"  # development | production | test
     database_url: str = f"sqlite:///{BACKEND_DIR / 'dreamcast.db'}"
+    # Explicit browser origins allowed to call the API (comma separated, exact match, never "*").
     cors_origins: str = "http://localhost:5173"
+    # The deployed frontend is always allowed in addition to CORS_ORIGINS, so a missing/stale env var can't break the live site.
+    production_frontend_url: str = "https://dreamcaastai.netlify.app"
     frontend_url: str = "http://localhost:5173"
+    # Behind a reverse proxy (Render) the real client IP is in X-Forwarded-For. None = trust it only in production.
+    trust_proxy_headers: bool | None = None
+
+    # Plan prices in whole rupees per month (INR). Change here (env), not in the frontend. 0 hides nothing: TRAILER is always free.
+    plan_indie_price_inr: int = 199
+    plan_blockbuster_price_inr: int = 499
+    plan_billing_days: int = 30       # how long one successful payment keeps a paid plan active
+
+    # Razorpay (server-side only). Leave empty: the app runs normally and paid checkout answers "payments not configured".
+    razorpay_key_id: str = ""         # public key id; the browser needs it to open Checkout
+    razorpay_key_secret: str = ""     # SECRET: signs/verifies payments; never sent to the browser or logged
+    razorpay_webhook_secret: str = "" # SECRET: verifies webhook calls from Razorpay
 
     # Auth: "local" (email/password + JWT issued by this API) or "supabase"
     auth_provider: str = "local"
@@ -32,6 +50,7 @@ class Settings(BaseSettings):
     max_upload_mb: int = 10
 
     rate_limit_auth_per_minute: int = 20
+    checkout_rate_limit_per_minute: int = 20     # payment orders per IP per minute (0 disables)
 
     # Prompt-refinement LLM. Any OpenAI-compatible chat API works (Groq, Gemini, OpenRouter, Ollama, OpenAI...).
     llm_provider: str = "groq"      # groq | gemini | openrouter | ollama | custom
@@ -100,7 +119,16 @@ class Settings(BaseSettings):
 
     @property
     def cors_origin_list(self) -> list[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        """Exact origins only: trailing slashes are dropped (browsers send none) and a wildcard is ignored."""
+        configured = [o.strip().rstrip("/") for o in self.cors_origins.split(",") if o.strip() and o.strip() != "*"]
+        # Local development origin is always allowed outside production; production only allows what is configured plus the Netlify site.
+        local = [] if self.is_production else [LOCAL_FRONTEND]
+        origins = [*(configured or local), self.production_frontend_url.strip().rstrip("/"), *local]
+        return [o for o in dict.fromkeys(origins) if o and o != "*"]
+
+    @property
+    def use_forwarded_for(self) -> bool:
+        return self.is_production if self.trust_proxy_headers is None else self.trust_proxy_headers
 
     @property
     def admin_email_set(self) -> set[str]:
@@ -117,7 +145,15 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _resolve_paths(self):
         """Relative paths in .env are relative to the project root, regardless of the current directory."""
-        if not self.auth_secret_key.strip():
+        if self.database_url.startswith("postgres://"):        # Render/Heroku style URL -> the form SQLAlchemy understands
+            self.database_url = "postgresql://" + self.database_url[len("postgres://"):]
+        for name in ("auth_secret_key", "auth_public_key", "razorpay_key_id", "razorpay_key_secret", "razorpay_webhook_secret", "llm_api_key",
+                     "music_api_key", "voice_api_key", "video_provider_api_key", "face_provider_api_key"):
+            value = getattr(self, name).strip()
+            setattr(self, name, "" if value.startswith(PLACEHOLDER_PREFIX) else value)     # an unfilled placeholder is not a credential
+        if not self.database_url.strip():
+            self.database_url = f"sqlite:///{BACKEND_DIR / 'dreamcast.db'}"
+        if not self.auth_secret_key:
             self.auth_secret_key = INSECURE_DEFAULT_SECRET
         prefix = "sqlite:///"
         if self.database_url.startswith(prefix) and not self.database_url.startswith(prefix + "/"):
@@ -133,6 +169,12 @@ class Settings(BaseSettings):
         # Also signs short-lived media URLs, so a real secret is required in production for every auth provider.
         if self.is_production and self.auth_secret_key == INSECURE_DEFAULT_SECRET:
             raise ValueError("AUTH_SECRET_KEY must be set to a strong random value in production")
+        if self.is_production and len(self.auth_secret_key) < MIN_PRODUCTION_SECRET_LENGTH:
+            raise ValueError(f"AUTH_SECRET_KEY must be at least {MIN_PRODUCTION_SECRET_LENGTH} characters in production")
+        if self.is_production and self.frontend_url.rstrip("/") == LOCAL_FRONTEND:
+            self.frontend_url = self.production_frontend_url      # links and redirects must never point at localhost in production
+        if self.is_production:
+            self.enable_dev_simulator = False       # the fake development provider can never run in production, whatever the env says
         return self
 
 

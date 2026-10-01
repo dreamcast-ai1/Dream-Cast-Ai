@@ -9,7 +9,7 @@ from ..db import SessionLocal
 from ..models import GenerationJob, ReferenceAsset
 from ..providers import ErrorCode, GenerationRequest, Provider, ProviderError, ProviderResult
 from ..providers.base import SyncProvider
-from . import assets, jobs, provider_settings
+from . import assets, jobs, movie, provider_settings
 
 log = logging.getLogger("dreamcast.runner")
 
@@ -61,6 +61,8 @@ def _execute(db: Session, job: GenerationJob) -> None:
     s = get_settings()
     if job.cancel_requested:
         return jobs.cancel_now(db, job)
+    if job.type == movie.MOVIE_JOB:           # joins existing clips with FFmpeg: no AI provider involved
+        return movie.run_assembly(db, job)
     provider: Provider = provider_settings.select_provider(db, job.type)
     job.provider = provider.name
     db.commit()

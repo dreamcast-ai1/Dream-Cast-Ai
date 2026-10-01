@@ -136,8 +136,8 @@ project's files. Large files live on disk/object storage; the DB stores keys and
 
 ## Deployment notes (provider-neutral)
 
-- **Frontend:** static site. `cd frontend && npm run build` → serve `frontend/dist` on any static host. The app calls relative
-  `/api/...`, so put the API on the same domain behind a reverse proxy/rewrite (`/api/*` → backend), which also avoids CORS.
+- **Frontend:** static site. `cd frontend && npm run build` → serve `frontend/dist` on any static host. By default the app calls relative
+  `/api/...` (same domain behind a proxy); to call a separate backend set `VITE_API_URL` at build time. See **Production Deployment Checklist** below.
   Add an SPA fallback so unknown paths serve `index.html`.
 - **Backend:** any host that runs Python: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. Run `alembic upgrade head` on deploy.
   Set `APP_ENV=production`, a strong `AUTH_SECRET_KEY`, `CORS_ORIGINS` and `FRONTEND_URL` to your real domain.
@@ -411,3 +411,68 @@ Tests mock the fal.ai queue (submit → status → result → file → cancel) a
 - Daily-limit checks are not atomic across processes (fine for one instance). Rate limiting is in-memory per process.
 - Supabase/Google login is still untested without credentials. No email server: local password reset links go to the backend log.
 - Frontend has no automated component tests (type-check + build + manual browser verification).
+
+
+## Phase 5 — subscriptions, Razorpay payments, movie scenes and assembly
+
+**Plans** (`backend/app/plans.py`, prices from `.env`): **Trailer** (free), **Indie** (₹199/month), **Blockbuster** (₹499/month).
+Each paid tier allows 4x the previous one's generations per day. One generated clip is at most 30 s on every plan.
+Every new user starts on Trailer, and users who existed before are moved to Trailer by the migration (nobody is charged or locked out).
+
+**Payments (Razorpay, behind `app/payments/PaymentProvider`).**
+1. `POST /api/subscription/checkout {plan_id}` creates an order at the **server's** price and returns the public key id.
+2. The browser opens Razorpay Checkout. When it finishes, `POST /api/subscription/verify` sends the three Razorpay values.
+3. The server checks the HMAC signature with `RAZORPAY_KEY_SECRET`. Only then is the plan activated, once (repeats and webhooks are harmless).
+4. `POST /api/payments/razorpay/webhook` (signature-checked with `RAZORPAY_WEBHOOK_SECRET`) covers the case where the browser closes early.
+Without keys the app works and upgrades answer "payments aren't available yet". Test mode: use Razorpay test keys and its test cards.
+Secrets live only in the server environment. The response to the browser contains the public key id and nothing else.
+
+**Movie.** Project → **Movie** tab: scenes (number, title, description, script, characters, visual prompt, length), **Generate Video** per scene
+(one normal video generation from your allowance), then **Assemble Movie**, which joins the scenes' clips in order with the bundled FFmpeg as a
+background job (Queued → Preparing → Assembling → Finalizing → Completed). Missing clips block assembly with "Scene N has not been generated yet."
+Assembling uses no video allowance. The final movie may be longer than 30 s; only individual clips are capped.
+
+**Production notes.**
+- Render (backend): root directory `backend`; build `pip install -r requirements.txt`; start
+  `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT` (note `:app`: `uvicorn app.main` alone fails). Set `APP_ENV=production`
+  and a long random `AUTH_SECRET_KEY`. The dev simulator is always off in production, and storage folders are created at startup.
+- Netlify (frontend): `VITE_API_URL=https://dreamcast-ai-backend.onrender.com`; `frontend/public/_redirects` keeps page refreshes from 404-ing.
+- `GET /health` returns `{"status":"ok"}`. CORS allows exact origins only (Netlify site always included).
+- Render free disks are ephemeral: SQLite data and media vanish on redeploy. Use a persistent disk or hosted Postgres before real users.
+
+
+## Production Deployment Checklist
+
+Backend on **Render**, frontend on **Netlify**. Do the steps in this order: Render, then Netlify, then Razorpay.
+
+**A. Netlify (frontend)** — site: https://dreamcaastai.netlify.app
+- Base directory `frontend`, build command `npm run build`, publish directory `dist` (if your site has no base directory set: `frontend/dist`).
+- Environment variable `VITE_API_URL` = `https://dreamcast-ai-backend.onrender.com` (no trailing slash).
+- Vite reads it **while building**, so after changing it use *Deploys → Trigger deploy → Clear cache and deploy site*.
+- `frontend/public/_redirects` makes refreshes on pages like `/plans` or `/projects/...` work. Keep it.
+
+**B. Render (backend)** — https://dreamcast-ai-backend.onrender.com
+- Root directory `backend`. Build command `pip install -r requirements.txt`.
+- Start command: `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT` (it must end in `app.main:app`).
+- Environment variables (names only, set the values in Render, never in Git):
+  `APP_ENV=production`, `AUTH_SECRET_KEY` (**required**, at least 32 random characters, e.g. `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`; the backend refuses to start without it),
+  `CORS_ORIGINS=https://dreamcaastai.netlify.app`, `FRONTEND_URL=https://dreamcaastai.netlify.app`, `ADMIN_EMAILS` (your email), and later the Razorpay and fal.ai values below.
+  Leave `DATABASE_URL` empty for the SQLite default. `ENABLE_DEV_SIMULATOR` is always off in production. `WORKER_ENABLED=true` (default) runs jobs inside the web process.
+- Check it works: open `/health`; it should show `{"status":"ok"}`.
+
+**C. Razorpay (payments)** — use **TEST** keys first.
+- Render variables: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`. Only the key id is ever sent to the browser; **never put the secret key in the frontend or in a `VITE_` variable**.
+- In the Razorpay dashboard (Test mode) add the webhook URL `https://dreamcast-ai-backend.onrender.com/api/payments/razorpay/webhook`, tick the events `payment.captured`, `order.paid` and `payment.failed`, and type the same secret you set as `RAZORPAY_WEBHOOK_SECRET`.
+- Prices come from the server (`PLAN_INDIE_PRICE_INR`, `PLAN_BLOCKBUSTER_PRICE_INR`). One payment = one 30-day plan; there is no auto-renewal, refund, invoice or tax handling.
+
+**D. fal.ai (video)**
+- Render variable `VIDEO_PROVIDER_API_KEY` (server-side only, never `VITE_`). Without it the app works and video requests say the provider isn't configured; no fake video is made and nothing is charged.
+- Each generated clip costs money at fal.ai; keep the plan limits low while testing.
+
+**E. Storage and database (important)**
+- Render's free disk is **ephemeral**: after a redeploy or restart the SQLite database (users, projects, payments) and all generated/uploaded media are **deleted**. The app starts cleanly and shows "not generated yet" for lost files, but the data is gone.
+- Fine for a demo. For real users you need PostgreSQL (`DATABASE_URL`) and persistent or object storage (a Render persistent disk, or an S3-compatible bucket). These are not set up yet.
+
+**F. Password reset**
+- There is no email service. "Forgot password" writes the reset link to the **Render logs** (`PASSWORD RESET LINK for ...`); anyone who can read the logs can use it. Email delivery needs an email provider, which is not configured.
+

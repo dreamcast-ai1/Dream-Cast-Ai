@@ -1,4 +1,4 @@
-import { BarChart3, Clapperboard, History as HistoryIcon, FolderKanban, LayoutDashboard, Menu as MenuIcon, Settings, Shield, Sparkles, X } from "lucide-react";
+import { BarChart3, Clapperboard, History as HistoryIcon, Ticket, FolderKanban, LayoutDashboard, Menu as MenuIcon, Settings, Shield, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -11,6 +11,7 @@ const nav = [
   { to: "/projects", label: "Projects", icon: FolderKanban },
   { to: "/history", label: "History", icon: HistoryIcon },
   { to: "/usage", label: "Usage", icon: BarChart3 },
+  { to: "/plans", label: "Plans", icon: Ticket },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 

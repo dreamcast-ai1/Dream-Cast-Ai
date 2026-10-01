@@ -50,6 +50,7 @@ class User(Base, TimestampedMixin):
     last_login_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
     projects: Mapped[list["Project"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    subscription: Mapped["Subscription | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
 
 
 class Project(Base, TimestampedMixin):
@@ -188,6 +189,72 @@ class Notification(Base, TimestampedMixin):
     job_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     project_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     asset_id: Mapped[str | None] = mapped_column(String(32), nullable=True)   # the result, for completed generations
+
+
+class Subscription(Base, TimestampedMixin):
+    """One row per user. plan_id refers to a key in app.plans.PLANS (plans are configuration, not data).
+    No payment credentials are ever stored here; the payment provider holds those and we keep only opaque references."""
+    __tablename__ = "subscriptions"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
+    plan_id: Mapped[str] = mapped_column(String(40), default="trailer", index=True)
+    status: Mapped[str] = mapped_column(String(15), default="ACTIVE")    # ACTIVE | PAST_DUE | CANCELLED | EXPIRED
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now)
+    expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)   # renewal/expiry; None = never (free plan)
+    payment_provider: Mapped[str | None] = mapped_column(String(30), nullable=True)     # "razorpay" or "admin"
+    provider_customer_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    provider_subscription_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, onupdate=_now)
+
+    user: Mapped["User"] = relationship(back_populates="subscription")
+
+
+class Payment(Base, TimestampedMixin):
+    """One checkout attempt (a payment-provider order). Holds only opaque provider references and amounts, never card data.
+    status: CREATED -> PAID, or CREATED -> FAILED/CANCELLED (a verified payment can still move those to PAID)."""
+    __tablename__ = "payments"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    plan_id: Mapped[str] = mapped_column(String(40))
+    provider: Mapped[str] = mapped_column(String(30), default="razorpay")
+    provider_order_id: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    provider_payment_id: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True, index=True)
+    amount_minor: Mapped[int] = mapped_column(Integer)          # paise
+    currency: Mapped[str] = mapped_column(String(3), default="INR")
+    status: Mapped[str] = mapped_column(String(15), default="CREATED", index=True)
+    failure_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    paid_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, onupdate=_now)
+
+
+class PaymentEvent(Base):
+    """Webhook event ids already handled: a repeated delivery of the same event is ignored."""
+    __tablename__ = "payment_events"
+    event_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(60), default="")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now)
+
+
+class Scene(Base, TimestampedMixin):
+    """One scene of a project's movie. Generating its clip uses the normal video job (and video allowance);
+    creating or editing a scene costs nothing."""
+    __tablename__ = "scenes"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    number: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    script: Mapped[str] = mapped_column(Text, default="")
+    character_ids: Mapped[list] = mapped_column(JSON, default=list)
+    visual_prompt: Mapped[str] = mapped_column(Text, default="")
+    duration_seconds: Mapped[int] = mapped_column(Integer, default=10)     # one clip: 10..30 s
+    video_asset_id: Mapped[str | None] = mapped_column(String(32), nullable=True)   # the clip used in the movie
+    last_job_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    script_asset_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # script this scene came from, if any
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, onupdate=_now)
+
+    __table_args__ = (Index("ix_scenes_project_number", "project_id", "number"),)
 
 
 class AppSetting(Base):

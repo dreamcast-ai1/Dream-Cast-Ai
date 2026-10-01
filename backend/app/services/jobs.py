@@ -17,6 +17,11 @@ log = logging.getLogger("dreamcast.jobs")
 TERMINAL = {"COMPLETED", "FAILED", "CANCELLED"}
 
 
+def _label(job_type: str) -> str:
+    """Lower-case user-facing name of what a job makes ("movie" is a job type but not an AI generator)."""
+    return BY_ID[job_type].label.lower() if job_type in BY_ID else job_type
+
+
 def _now():
     return datetime.now(timezone.utc)
 
@@ -86,8 +91,8 @@ def complete(db: Session, job: GenerationJob, output_meta: dict | None = None, *
     job.output_meta = output_meta or {}
     db.commit()
     usage.settle(db, job.id, refund=False, provider=job.provider, units=units, cost_estimate=cost_estimate)
-    ready = {"video": "Your video is ready.", "face_replacement": "Your face replacement is ready."}.get(
-        job.type, f"Your {BY_ID[job.type].label.lower()} generation is ready.")
+    ready = {"video": "Your video is ready.", "face_replacement": "Your face replacement is ready.", "movie": "Your movie is ready."}.get(
+        job.type, f"Your {_label(job.type)} generation is ready.")
     notifications.notify(db, job.user_id, ready, (job.original_prompt or "")[:120], type="job_completed", job_id=job.id,
                          project_id=job.project_id, asset_id=(output_meta or {}).get("asset_id"))
 
@@ -98,7 +103,7 @@ def fail(db: Session, job: GenerationJob, error: ProviderError) -> None:
     db.commit()
     refund = (not job.reached_provider) or error.code in REFUNDABLE
     usage.settle(db, job.id, refund=refund, provider=job.provider, status="FAILED")
-    notifications.notify(db, job.user_id, f"Your {BY_ID[job.type].label.lower()} generation failed.", error.user_message,
+    notifications.notify(db, job.user_id, f"Your {_label(job.type)} {'assembly' if job.type == 'movie' else 'generation'} failed.", error.user_message,
                          type="job_failed", job_id=job.id, project_id=job.project_id)
 
 
@@ -107,7 +112,7 @@ def schedule_retry(db: Session, job: GenerationJob, error: ProviderError) -> Non
     job.error_code, job.external_id = error.code.value, None
     job.retry_at = _now() + timedelta(seconds=get_settings().job_retry_delay_seconds)
     db.commit()
-    notifications.notify(db, job.user_id, f"Your {BY_ID[job.type].label.lower()} generation is being retried.",
+    notifications.notify(db, job.user_id, f"Your {_label(job.type)} generation is being retried.",
                          "A temporary problem occurred. We'll try once more automatically.", type="job_retry",
                          job_id=job.id, project_id=job.project_id)
 

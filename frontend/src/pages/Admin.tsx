@@ -8,6 +8,7 @@ import { api, errorMessage } from "../lib/api";
 import { formatDate, timeAgo } from "../lib/format";
 import type { AdminStats, AdminUser, Job, ProviderInfo } from "../lib/types";
 
+const PLAN_CHOICES: [string, string][] = [["trailer", "Trailer"], ["indie", "Indie"], ["blockbuster", "Blockbuster"]];
 const TABS = [{ id: "overview", label: "Overview" }, { id: "users", label: "Users" }, { id: "limits", label: "Limits" },
   { id: "jobs", label: "Failed jobs" }, { id: "providers", label: "Providers" }];
 
@@ -29,6 +30,11 @@ function Users() {
   const { user: me } = useAuth();
   const { data, setData, loading, error, reload } = useAsync(() => api<AdminUser[]>("/api/admin/users"));
   const [err, setErr] = useState("");
+  const setPlan = async (u: AdminUser, plan_id: string) => {      // manual grant for demos/support: not a payment
+    setErr("");
+    try { await api(`/api/admin/users/${u.id}/subscription`, { method: "PATCH", json: { plan_id, days: plan_id === "trailer" ? undefined : 30 } }); await reload(); }
+    catch (e) { setErr(errorMessage(e)); }
+  };
   const patch = async (u: AdminUser, body: { is_active?: boolean; role?: string }) => {
     setErr("");
     try { await api(`/api/admin/users/${u.id}`, { method: "PATCH", json: body }); setData((data ?? []).map((x) => (x.id === u.id ? { ...x, ...body } as AdminUser : x))); }
@@ -40,12 +46,18 @@ function Users() {
     <div className="space-y-3">
       {err && <Alert kind="error">{err}</Alert>}
       <div className="card overflow-x-auto">
-        <table className="w-full min-w-[42rem] text-left text-sm">
-          <thead className="border-b border-border text-xs text-muted"><tr>{["User", "Role", "Status", "Generations", "Requests", "Joined", ""].map((h) => <th key={h} scope="col" className="px-4 py-2.5 font-medium">{h}</th>)}</tr></thead>
+        <table className="w-full min-w-[64rem] text-left text-sm">
+          <thead className="border-b border-border text-xs text-muted"><tr>{["User", "Role", "Plan", "Subscription", "Used today", "Payment", "Status", "Generations", "Requests", "Joined", ""].map((h) => <th key={h} scope="col" className="px-4 py-2.5 font-medium">{h}</th>)}</tr></thead>
           <tbody className="divide-y divide-border">{data!.map((u) => (
             <tr key={u.id}>
               <td className="px-4 py-3"><p className="font-medium">{u.name}</p><p className="text-xs text-muted">{u.email}</p></td>
               <td className="px-4 py-3">{u.role === "ADMIN" ? "Admin" : "User"}</td>
+              <td className="px-4 py-3"><label className="sr-only" htmlFor={`plan-${u.id}`}>Plan for {u.email}</label>
+                <select id={`plan-${u.id}`} className="field !w-36 !py-1 !text-xs" value={u.plan_id} onChange={(e) => void setPlan(u, e.target.value)}>
+                  {PLAN_CHOICES.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></td>
+              <td className="px-4 py-3"><StatusBadge status={u.subscription_status} />{u.subscription_expires_at && <p className="mt-1 text-xs text-muted">to {formatDate(u.subscription_expires_at)}</p>}</td>
+              <td className="px-4 py-3">{u.used_today}</td>
+              <td className="px-4 py-3 text-muted">{u.payment_status ? u.payment_status.toLowerCase() : "—"}</td>
               <td className="px-4 py-3"><StatusBadge status={u.is_active ? "ACTIVE" : "DISABLED"} /></td>
               <td className="px-4 py-3">{u.generations}</td><td className="px-4 py-3">{u.requests}</td>
               <td className="whitespace-nowrap px-4 py-3 text-muted">{formatDate(u.created_at)}</td>
@@ -61,25 +73,30 @@ function Users() {
 }
 
 function Limits() {
-  const { data, loading, error, reload } = useAsync(() => api<{ items: { generator: string; label: string; emoji: string; limit: number }[] }>("/api/admin/limits"));
+  const [plan, setPlan] = useState("trailer");
+  const { data, loading, error, reload } = useAsync(() => api<{ plan: string; plans: { id: string; name: string }[]; items: { generator: string; label: string; emoji: string; limit: number }[] }>(`/api/admin/limits?plan=${plan}`), [plan]);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<{ kind: "success" | "error"; text: string } | null>(null);
-  if (loading) return <PageLoader />;
-  if (error) return <ErrorState message={error} onRetry={reload} />;
+  if (loading && !data) return <PageLoader />;
+  if (error || !data) return <ErrorState message={error ?? "Could not load limits."} onRetry={reload} />;
   const save = async () => {
     const limits = Object.fromEntries(Object.entries(edits).map(([k, v]) => [k, Number(v)]));
     if (Object.values(limits).some((n) => !Number.isInteger(n) || n < 0)) { setMsg({ kind: "error", text: "Limits must be whole numbers, 0 or higher." }); return; }
-    try { await api("/api/admin/limits", { method: "PUT", json: { limits } }); setEdits({}); setMsg({ kind: "success", text: "Limits saved." }); void reload(); }
+    try { await api("/api/admin/limits", { method: "PUT", json: { plan, limits } }); setEdits({}); setMsg({ kind: "success", text: "Limits saved." }); void reload(); }
     catch (e) { setMsg({ kind: "error", text: errorMessage(e) }); }
   };
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">Per-user daily request limits for each generator.</p>
+      <div className="flex flex-wrap items-end gap-3">
+        <div><label htmlFor="limits-plan" className="mb-1 block text-sm font-medium">Plan</label>
+          <select id="limits-plan" className="field !w-48" value={plan} onChange={(e) => { setPlan(e.target.value); setEdits({}); setMsg(null); }}>{data.plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+        <p className="pb-2 text-sm text-muted">Generations each user on this plan may start per usage period. Defaults live in <code>backend/app/plans.py</code>.</p>
+      </div>
       {msg && <Alert kind={msg.kind}>{msg.text}</Alert>}
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{data!.items.map((i) => (
+      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{data.items.map((i) => (
         <li key={i.generator} className="card flex items-center justify-between gap-3 p-4">
           <label htmlFor={`lim-${i.generator}`} className="text-sm font-medium"><span aria-hidden>{i.emoji}</span> {i.label}</label>
-          <input id={`lim-${i.generator}`} type="number" min={0} className="field !w-20 text-right" value={edits[i.generator] ?? String(i.limit)} onChange={(e) => setEdits({ ...edits, [i.generator]: e.target.value })} />
+          <input id={`lim-${i.generator}`} type="number" min={0} className="field !w-24 text-right" value={edits[i.generator] ?? String(i.limit)} onChange={(e) => setEdits({ ...edits, [i.generator]: e.target.value })} />
         </li>))}</ul>
       <button className="btn-primary" disabled={!Object.keys(edits).length} onClick={save}>Save limits</button>
     </div>

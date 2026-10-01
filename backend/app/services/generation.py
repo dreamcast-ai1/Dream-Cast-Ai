@@ -10,7 +10,7 @@ from ..generators import BY_ID, canonical_generator
 from ..models import GeneratedAsset, GenerationJob, Project, ReferenceAsset, User
 from ..providers import ProviderError
 from . import context as ctx_service
-from . import jobs, provider_settings, usage
+from . import jobs, provider_settings, subscriptions, usage
 from .generation_schema import AUX_KEYS, SPECS, normalize_options, validate_prompt
 
 MAX_REFINED = 8000
@@ -45,6 +45,7 @@ def prepare(db: Session, user: User, generator_type: str, prompt: str, options: 
     project = owned_project_or_404(db, user, project_id)
     clean, warnings = normalize_options(generator, options, prompt or "", strict=strict)
     prompt = validate_prompt(generator, prompt, clean)
+    plan_notes = _check_plan_entitlements(db, user, generator, clean, strict)      # first: a plan limit beats input details
     refs: list[ReferenceAsset] = []
     ids = list(dict.fromkeys(reference_ids or []))
     if generator == "video" and clean.get("method") == "Image to Video" and not ids:
@@ -66,7 +67,7 @@ def prepare(db: Session, user: User, generator_type: str, prompt: str, options: 
         warnings += _variations_note(db, user, generator, prompt)
     warnings += _check_provider_capabilities(db, generator, clean, prompt, strict,
                                              [{"id": r.id, "type": r.type, "mime_type": r.mime_type} for r in refs])
-    return Prepared(generator, project, prompt, clean, refs, warnings)
+    return Prepared(generator, project, prompt, clean, refs, [*plan_notes, *warnings])
 
 
 def _validate_face_inputs(options: dict, refs: list[ReferenceAsset], strict: bool) -> None:
@@ -83,6 +84,25 @@ def _validate_face_inputs(options: dict, refs: list[ReferenceAsset], strict: boo
         raise AppError("Please confirm that you have permission to use the face/image you uploaded.", 422, "permission_required")
 
 
+def _check_plan_entitlements(db: Session, user: User, generator: str, options: dict, strict: bool) -> list[str]:
+    """Plan features are enforced here, on the server, for every request (UI hints are never the only guard)."""
+    if generator == "face_replacement":
+        subscriptions.require_feature(db, user, "face_replacement", "Face replacement isn't included in your plan.")
+    if generator != "video":
+        return []
+    if options.get("method") == "Image to Video":
+        subscriptions.require_feature(db, user, "image_to_video", "Image-to-video isn't included in your plan.")
+    cap = int(subscriptions.entitlements(db, user)["features"]["max_video_seconds"])
+    duration = options.get("duration_seconds")
+    if duration is not None and duration > cap:
+        message = f"Your plan allows videos up to {cap} seconds."
+        if strict:
+            raise AppError(message, 422, "validation_error")
+        options["duration_seconds"] = max((d for d in (10, 20, 30) if d <= cap), default=10)
+        return [f"{message} Duration adjusted to {options['duration_seconds']} seconds."]
+    return []
+
+
 def _variations_note(db: Session, user: User, generator: str, prompt: str) -> list[str]:
     """DreamCast never silently makes several generations: if the prompt asks for N versions, say what's actually possible."""
     m = re.search(r"\b(\d+|two|three|four|five)\s+(versions?|variations?|options|takes|videos)\b", prompt or "", re.I)
@@ -90,7 +110,7 @@ def _variations_note(db: Session, user: User, generator: str, prompt: str) -> li
     if n <= 1:
         return []
     label = BY_ID[generator].label.lower()
-    left = max(0, usage.get_limits(db)[generator] - usage.used_today(db, user.id).get(generator, 0))
+    left = usage.remaining(db, user.id, generator)
     return [f"DreamCast creates one {label} per generation, so this makes one. You have {left} {label} generation{'s' if left != 1 else ''} "
             f"remaining today; generate again for another version."]
 
@@ -142,7 +162,7 @@ def check_can_submit(db: Session, user: User, generator: str):
 
 def submit(db: Session, user: User, generator_type: str, original_prompt: str, refined_prompt: str, options: dict | None,
            project_id: str | None, reference_ids: list[str] | None, parent_id: str | None = None,
-           lineage_id: str | None = None) -> GenerationJob:
+           lineage_id: str | None = None, extra_meta: dict | None = None) -> GenerationJob:
     prep = prepare(db, user, generator_type, original_prompt, options, project_id, reference_ids, strict=True)
     refined = (refined_prompt or "").strip()
     if not refined:
@@ -158,4 +178,4 @@ def submit(db: Session, user: User, generator_type: str, original_prompt: str, r
                            original_prompt=prep.prompt, refined_prompt=refined, options=prep.options,
                            reference_assets=[r.id for r in prep.references], context=build_context(db, prep, full=True),
                            provider=provider.name, parent_id=parent_id,
-                           input_meta={"lineage_id": lineage_id} if lineage_id else None)
+                           input_meta={**({"lineage_id": lineage_id} if lineage_id else {}), **(extra_meta or {})} or None)
