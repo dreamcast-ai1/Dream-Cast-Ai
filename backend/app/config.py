@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 30.0
     refine_daily_limit: int = 40    # prompt refinements (LLM calls) per user per day; 0 = unlimited
     refine_rate_limit_per_minute: int = 10
+    text_rate_limit_per_minute: int = 8    # Story / Story-to-Script requests per IP per minute (0 disables); daily allowances use the story/script usage limits
+    # Gemini "thinking" models spend part of max_tokens on hidden reasoning. "low" keeps that small. Empty = "low" for Gemini, nothing for other providers.
+    llm_reasoning_effort: str = ""
 
     # Text generation (story / script / lyrics) reuses the LLM settings above.
     llm_generation_timeout_seconds: float = 120.0

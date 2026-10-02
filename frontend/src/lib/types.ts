@@ -64,3 +64,21 @@ export interface MovieState {
   missing: string[]; can_assemble: boolean; total_seconds: number;
   active_job: { id: string; status: string; stage: string } | null; movie: Asset | null;
 }
+export interface TextOptions {
+  genres: string[]; tones: string[]; languages: string[]; lengths: string[]; script_styles: string[]; script_formats: string[]; durations: number[]; configured: boolean;
+  limits: { prompt: number; story: number; instructions: number; genre: number; tone: number; style: number; language: number };
+}
+export interface SavedText { asset_id: string; project_id: string; job_id: string }
+export interface TextCharacter { name: string; description: string }
+export interface StoryResult {
+  kind: "story"; title: string; logline: string; setting: string; characters: TextCharacter[]; beginning: string; middle: string; climax: string; ending: string;
+  full_story: string; text: string; word_count: number; language: string; genre: string; tone: string; saved: SavedText | null; model: string; remaining: number;
+}
+export interface ScriptScene {
+  number: number; heading: string; location: string; time: string; action: string; narration: string; dialogue: { speaker: string; line: string }[];
+  sound: string; camera: string; transition: string; estimated_seconds: number;
+}
+export interface ScriptResult {
+  kind: "script"; title: string; logline: string; characters: TextCharacter[]; scenes: ScriptScene[]; scene_count: number; estimated_total_seconds: number; text: string;
+  word_count: number; language: string; style: string; tone: string; script_format: string; duration_minutes: number | null; saved: SavedText | null; model: string; remaining: number;
+}

@@ -441,6 +441,25 @@ Assembling uses no video allowance. The final movie may be longer than 30 s; onl
 - Render free disks are ephemeral: SQLite data and media vanish on redeploy. Use a persistent disk or hosted Postgres before real users.
 
 
+## Write: Story Generator and Story to Script (Gemini or Groq)
+
+**Write** (sidebar) has two tools, each with a review step:
+- **Story Generator** (prompt, optional genre, tone, length and language) asks the text model for a JSON object and shows a structured story: title, logline, setting, characters,
+  beginning, middle, climax, ending and the full story. You can edit the whole story before using it. **Convert Story to Script** then sends the (edited) story to the script tool.
+- **Story to Script** (optional script format, style, tone, target duration, language and notes) returns title, logline, characters and scenes, each with its heading, action,
+  narration, dialogue, sound/SFX, camera, transition and an estimated duration, plus a total. You can edit the script text before copying it. The script keeps the story's
+  characters, events and ending and only changes the plot if you ask in the notes box.
+
+Nothing is sent to image, video, music or voice generation unless you choose to. Results can be saved to a project (they then appear in the Library and History, and a saved script
+can become movie scenes with *From script*). API: `POST /api/text/story`, `POST /api/text/script`, `GET /api/text/options` (signed in; limited by `TEXT_RATE_LIMIT_PER_MINUTE` and by the
+same daily Story/Script allowances as Create). The model is called on the server only, with `response_format: json_object` (retried without it if a model rejects it, and a malformed
+answer gets one more try inside the same allowance unit).
+
+**Render variables for Gemini** (names only; set the values in Render, never in Git):
+`LLM_PROVIDER=gemini`, `LLM_API_KEY=<your Gemini API key>`, and `LLM_MODEL` left **empty** (the default is the current Flash-Lite model). Google shut `gemini-2.0-flash` down on
+2026-06-01, so do not set that model. Gemini is used only for prompt refinement, Story and Story to Script. Without a key the Write page says the text provider is not configured and the
+rest of the app keeps working. Groq still works: `LLM_PROVIDER=groq`.
+
 ## Images and the Library
 
 **Image generation** (Create → Image) uses fal.ai text-to-image (default `fal-ai/flux/schnell`, the cheapest model) behind the same provider

@@ -14,6 +14,7 @@ os.environ.update({
     "REQUIRE_EMAIL_VERIFICATION": "false",   # existing tests sign up and use the account at once; test_auth_flows.py turns verification on
     "OTP_RESEND_SECONDS": "0",
     "REFINE_RATE_LIMIT_PER_MINUTE": "0",
+    "TEXT_RATE_LIMIT_PER_MINUTE": "0",
     "WORKER_ENABLED": "false",          # tests drive the runner directly (deterministic, no threads)
     "ENABLE_DEV_SIMULATOR": "true",
     "DEV_SIMULATOR_STEP_SECONDS": "0",

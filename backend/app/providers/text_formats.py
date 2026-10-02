@@ -35,6 +35,11 @@ def _budget(words: int, lang: str, cap: int) -> int:
     return int(min(cap, words * TOKENS_PER_WORD[lang] * 1.5 + 300))
 
 
+def _tone_line(options: dict) -> str:
+    tone = (options.get("tone") or "").strip()
+    return f" Tone: {tone}." if tone else ""
+
+
 def build_story(refined: str, options: dict, ctx: dict, cap: int) -> TextJob:
     lang = _language(options)
     custom = (options.get("length_custom") or "").strip()
@@ -55,8 +60,14 @@ ACT 1: <summary>
 ACT 2: <summary>
 ACT 3: <summary>
 ENDING: <how it resolves>
-{length_line} Do not add material beyond the request."""
+{length_line}{_tone_line(options)} Do not add material beyond the request."""
     return TextJob(system, refined, _budget(words if not custom else 700, lang, cap), lang, words)
+
+
+def _style_line(options: dict) -> str:
+    style = (options.get("style") or "").strip()
+    tone = (options.get("tone") or "").strip()
+    return (f"\nScript style: {style}." if style else "") + (f"\nTone: {tone}." if tone else "")
 
 
 def build_script(refined: str, options: dict, ctx: dict, cap: int) -> TextJob:
@@ -87,9 +98,10 @@ Environment: <what the space looks like>
 Characters: <who is present, and how they enter>
 Action:
 <present-tense action lines>
+Narration: <voice-over narration, only if the scene truly needs it; otherwise leave this line out>
 Camera: <visual direction, only where useful>
 Lighting: <light and colour>
-Sound: <ambient sound and effects>
+Sound: <ambient sound and sound effects (SFX)>
 Music cue: <only if relevant>
 DIALOGUE
 <CHARACTER NAME>:
@@ -97,7 +109,9 @@ DIALOGUE
 Transition: <CUT TO / FADE OUT / ...>
 End the script with the single line:
 END
-If a story is provided below, adapt it faithfully: same characters, events and ending."""
+If a story is provided below, adapt it faithfully: keep the same characters, events, order of events and ending. Do not add, remove or change major
+plot points or characters unless the instructions explicitly ask for that. Add only what a screenplay needs: locations, times of day, visual action and dialogue
+that follow from the story.{_style_line(options)}"""
     user = refined
     if story := ctx.get("story_full"):
         user += f"\n\nSTORY TO ADAPT:\n{story}"
@@ -129,6 +143,60 @@ TITLE: <song title>
 ...
 Use only the sections that suit the song (omit others). Lines should scan and rhyme naturally in the chosen language."""
     return TextJob(system, refined, _budget(LYRICS_WORDS, lang, cap), lang, LYRICS_WORDS)
+
+
+STUDIO_STORY_WORDS = {"Short": 400, "Medium": 800, "Long": 1400}
+SCRIPT_FORMATS = {
+    "Screenplay": "Standard screenplay: a balance of visual action and dialogue.",
+    "Narrated video (voice-over)": "Tell the story mainly through voice-over narration with short visual scene descriptions and little dialogue.",
+    "Dialogue-led": "Drive the story mainly through dialogue between the characters, with brief action lines.",
+    "Visual (minimal dialogue)": "Tell the story visually with minimal or no dialogue; use narration only where essential.",
+}
+
+
+def _json_lang_rule(lang: str) -> str:
+    return f"Write every text value in {LANGUAGE_NOTES[lang]}. Keep the JSON keys in English exactly as listed."
+
+
+def build_story_json(prompt: str, options: dict, ctx: dict, cap: int) -> TextJob:
+    """A complete story as one JSON object (used by the Story Generator). The registered 'story' generator above stays a plain-text outline builder."""
+    lang = _language(options)
+    words = STUDIO_STORY_WORDS.get(options.get("length") or "Medium", 800)
+    genre = (options.get("genre") or "").strip()
+    system = f"""You are a fiction writer. {COPYRIGHT}
+{_json_lang_rule(lang)}
+Write a COMPLETE short story (clear beginning, middle, climax and ending) about {words} words.{f" Genre: {genre}." if genre else ""}{_tone_line(options)}
+Stay with what the user asked for; do not add unrelated material. No markdown symbols inside the text values.
+Return ONLY one JSON object (no commentary, no code fences) with exactly these keys:
+{{"title": string, "logline": string (one-sentence premise), "setting": string (time and place, 1-2 sentences),
+"characters": [{{"name": string, "description": string (who they are and what they want)}}],
+"beginning": string (2-4 sentence summary of the opening), "middle": string (summary), "climax": string (summary), "ending": string (summary),
+"full_story": string (the complete story as prose; separate paragraphs with a blank line)}}"""
+    return TextJob(system, prompt, int(min(cap, _budget(words, lang, cap) * 1.25)), lang, words)
+
+
+def build_script_json(instructions: str, options: dict, ctx: dict, cap: int) -> TextJob:
+    """A screenplay as one JSON object (used by Story to Script). It must follow the story: no major plot changes unless the notes ask for them."""
+    lang = _language(options)
+    minutes = int(str(options.get("target_minutes") or "0").split()[0] or 0)
+    scenes, words = SCRIPT_PROFILES.get(minutes) or SCRIPT_BY_LENGTH["Medium"]
+    duration_line = (f"The screenplay covers about {minutes} minutes of screen time in about {scenes} scenes." if minutes else f"Use about {scenes} scenes.")
+    fmt = SCRIPT_FORMATS.get(options.get("script_format") or "Screenplay", SCRIPT_FORMATS["Screenplay"])
+    system = f"""You are a screenwriter. {COPYRIGHT}
+{_json_lang_rule(lang)}
+Convert the story below into a production-ready screenplay. {duration_line} Total about {words} words. Format: {fmt}
+Adapt the story faithfully: keep the same characters, events, order of events and ending. Do not add, remove or change major plot points or characters
+unless the notes explicitly ask for it. Add only what a screenplay needs: locations, times of day, visual action and dialogue that follow from the story.{_style_line(options)}
+No markdown symbols inside the text values.
+Return ONLY one JSON object (no commentary, no code fences) with exactly these keys:
+{{"title": string, "logline": string, "characters": [{{"name": string, "description": string}}],
+"scenes": [{{"number": integer starting at 1, "heading": string (a slug line such as "EXT. HARBOUR - DUSK"), "location": string, "time": string (day/night/dawn... or ""),
+"action": string (present-tense visual description of what we see), "narration": string (voice-over, or ""),
+"dialogue": [{{"speaker": string (CHARACTER NAME), "line": string}}] (empty list if none),
+"sound": string (ambient sound and sound effects, or ""), "camera": string (only if useful, or ""), "transition": string ("CUT TO", "FADE OUT" ... or ""),
+"estimated_seconds": integer (realistic screen time of this scene)}}]}}"""
+    user = (instructions or "Convert this story into a screenplay.") + f"\n\nSTORY TO ADAPT:\n{ctx.get('story_full', '')}"
+    return TextJob(system, user, int(min(cap, _budget(words, lang, cap) * 1.35)), lang, words)
 
 
 BUILDERS = {"story": build_story, "script": build_script, "lyrics": build_lyrics}

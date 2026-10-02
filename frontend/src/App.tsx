@@ -17,6 +17,7 @@ import ProjectWorkspace from "./pages/ProjectWorkspace";
 import Projects from "./pages/Projects";
 import Settings from "./pages/Settings";
 import Usage from "./pages/Usage";
+import Write from "./pages/Write";
 
 export default function App() {
   return (
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/create/:generator?" element={<Create />} />
           <Route path="/history" element={<History />} />
           <Route path="/library" element={<Library />} />
+          <Route path="/write/:mode?" element={<Write />} />
           <Route path="/history/:jobId" element={<JobDetail />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:projectId" element={<ProjectWorkspace />} />

@@ -49,7 +49,7 @@ def word_count(text: str) -> int:
     return len(re.findall(r"\S+", text or ""))
 
 
-_LABEL = re.compile(r"^\s*(Environment|Characters|Action|Camera|Lighting|Sound|Music cue|Transition)\s*:\s*(.*)$", re.I)
+_LABEL = re.compile(r"^\s*(Environment|Characters|Action|Narration|Camera|Lighting|Sound|Music cue|Duration|Transition)\s*:\s*(.*)$", re.I)
 _SPEAKER = re.compile(r"^\s*([A-Z][A-Z0-9 .'\-]{1,30}?)\s*(?:\([^)]*\))?\s*:\s*$")
 _QUOTED = re.compile(r"^\s*[\"“](.+?)[\"”]\s*$")
 STORY_SECTIONS = ("SETTING", "LOGLINE", "ACT 1", "ACT 2", "ACT 3", "ENDING")
@@ -60,7 +60,7 @@ def parse_scene_fields(scene_body: str) -> dict:
     """Structured view of one scene (location, time, environment, characters, action, camera, lighting, sound, dialogue),
     derived from the labelled lines the script format requires. Missing labels simply stay empty."""
     lines = [l.rstrip() for l in scene_body.splitlines()]
-    fields: dict[str, str] = {"environment": "", "characters": "", "action": "", "camera": "", "lighting": "", "sound": "", "music_cue": "", "transition": ""}
+    fields: dict[str, str] = {"environment": "", "characters": "", "action": "", "narration": "", "duration": "", "camera": "", "lighting": "", "sound": "", "music_cue": "", "transition": ""}
     heading, current, in_dialogue, speaker, dialogue = "", None, False, None, []
     for raw in lines[1:] if lines and lines[0].strip().upper().startswith("SCENE") else lines:
         line = raw.strip()
@@ -116,3 +116,36 @@ def parse_story_sections(text: str) -> list[dict]:
         if cur and line.strip():
             cur["text"] = (cur["text"] + " " + line.strip()).strip()
     return [s for s in out if s["text"]]
+
+
+_CHARACTER_LINE = re.compile(r"^\s*[-*•]\s*([^:\n]{1,40}?)\s*:\s*(.+)$")
+
+
+def parse_character_list(text: str, header: str = "CHARACTERS") -> list[dict]:
+    """[{name, description}] from the "- NAME: description" lines under a CHARACTERS: heading of a script."""
+    out, inside = [], False
+    for line in (text or "").splitlines():
+        if re.match(rf"^\s*{header}\s*:?\s*$", line, re.I):
+            inside = True
+            continue
+        if inside:
+            m = _CHARACTER_LINE.match(line)
+            if m:
+                out.append({"name": m.group(1).strip().title(), "description": m.group(2).strip()})
+            elif line.strip():
+                break
+    return out
+
+
+def parse_logline(text: str) -> str:
+    m = re.search(r"^\s*LOGLINE\s*:\s*(.+?)\s*$", text or "", re.I | re.M)
+    return m.group(1).strip() if m else ""
+
+
+def story_body(text: str) -> str:
+    """The prose of a generated story (everything after the TITLE / LOGLINE header lines)."""
+    lines = (text or "").splitlines()
+    i = 0
+    while i < len(lines) and (not lines[i].strip() or re.match(r"^\s*(TITLE|LOGLINE|GENRE)\s*:", lines[i], re.I)):
+        i += 1
+    return "\n".join(lines[i:]).strip()

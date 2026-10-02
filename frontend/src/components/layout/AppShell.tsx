@@ -1,4 +1,4 @@
-import { BarChart3, Clapperboard, History as HistoryIcon, Images, Ticket, FolderKanban, LayoutDashboard, Menu as MenuIcon, Settings, Shield, Sparkles, X } from "lucide-react";
+import { BarChart3, Clapperboard, History as HistoryIcon, Images, PenLine, Ticket, FolderKanban, LayoutDashboard, Menu as MenuIcon, Settings, Shield, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -8,6 +8,7 @@ import { UserMenu } from "./UserMenu";
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/create", label: "Create", icon: Sparkles },
+  { to: "/write", label: "Write", icon: PenLine },
   { to: "/projects", label: "Projects", icon: FolderKanban },
   { to: "/history", label: "History", icon: HistoryIcon },
   { to: "/library", label: "Library", icon: Images },

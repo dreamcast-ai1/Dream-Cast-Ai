@@ -12,7 +12,8 @@ log = logging.getLogger("dreamcast.llm")
 # provider -> (base_url, default_model, needs_key). Model names change over time; override with LLM_MODEL.
 PRESETS = {
     "groq": ("https://api.groq.com/openai/v1", "llama-3.1-8b-instant", True),
-    "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.0-flash", True),
+    # gemini-2.0-flash was shut down by Google on 2026-06-01; this is the current cheap Flash-Lite model (override with LLM_MODEL).
+    "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-3.5-flash-lite", True),
     "openrouter": ("https://openrouter.ai/api/v1", "meta-llama/llama-3.1-8b-instruct:free", True),
     "ollama": ("http://localhost:11434/v1", "llama3.2", False),
     "custom": ("", "", True),
@@ -23,7 +24,12 @@ class TextProvider(Provider):
     capability = ProviderCapability.TEXT
 
     @abstractmethod
-    def complete(self, system: str, user: str, max_tokens: int = 400, temperature: float = 0.4, timeout: float | None = None) -> str: ...
+    def complete(self, system: str, user: str, max_tokens: int = 400, temperature: float = 0.4, timeout: float | None = None, json_mode: bool = False) -> str: ...
+
+    def generate_text(self, system: str, user: str, *, max_tokens: int = 1500, temperature: float = 0.8, timeout: float | None = None, json_mode: bool = False) -> str:
+        """Long-form generation (story, script). Same call as complete() with writing-friendly defaults; complete() stays for prompt refinement.
+        json_mode asks the provider for a single JSON object (OpenAI-style response_format); providers that don't support it are retried without it."""
+        return self.complete(system, user, max_tokens=max_tokens, temperature=temperature, timeout=timeout, json_mode=json_mode)
 
     # Text providers are used synchronously for refinement, not as background generators (yet).
     def generate(self, request):  # pragma: no cover - not used until story/script/lyrics providers
@@ -82,17 +88,32 @@ class PromptRefinementProvider(TextProvider):
     def is_configured(self) -> bool:
         return not self.validate_config()
 
-    def complete(self, system: str, user: str, max_tokens: int = 400, temperature: float = 0.4, timeout: float | None = None) -> str:
+    @property
+    def reasoning_effort(self) -> str:
+        """Gemini models think by default and thinking tokens share the max_tokens budget, so long output could be cut short. Ask for little thinking."""
+        return self.s.llm_reasoning_effort or ("low" if self.s.llm_provider == "gemini" else "")
+
+    def complete(self, system: str, user: str, max_tokens: int = 400, temperature: float = 0.4, timeout: float | None = None, json_mode: bool = False) -> str:
         if not self.is_configured():
             raise ProviderError(ErrorCode.API_NOT_CONFIGURED, "; ".join(self.validate_config()))
         headers = {"Content-Type": "application/json"}
         if self.s.llm_api_key:
             headers["Authorization"] = f"Bearer {self.s.llm_api_key}"
-        body = {"model": self.model, "temperature": temperature, "max_tokens": max_tokens,
+        effort = self.reasoning_effort
+        body = {"model": self.model, "temperature": temperature, "max_tokens": max_tokens + (1024 if effort else 0),     # headroom for the hidden reasoning tokens
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+        if effort:
+            body["reasoning_effort"] = effort
+        if json_mode:
+            body["response_format"] = {"type": "json_object"}
         try:
             with http_client(timeout or self.s.llm_timeout_seconds) as client:
                 res = client.post(f"{self.base_url}/chat/completions", json=body, headers=headers)
+                if res.status_code == 400 and (effort or json_mode):     # a model that rejects one of these optional settings: retry once without them
+                    for extra in ("reasoning_effort", "response_format"):
+                        body.pop(extra, None)
+                    body["max_tokens"] = max_tokens
+                    res = client.post(f"{self.base_url}/chat/completions", json=body, headers=headers)
         except httpx.TimeoutException as e:
             raise ProviderError(ErrorCode.PROVIDER_UNAVAILABLE, f"timeout: {e}", transient=True)
         except httpx.HTTPError as e:
@@ -107,9 +128,12 @@ class PromptRefinementProvider(TextProvider):
             log.warning("LLM rejected request: HTTP %s %s", res.status_code, res.text[:300])
             raise ProviderError(ErrorCode.INVALID_REQUEST, f"HTTP {res.status_code}")
         try:
-            text = res.json()["choices"][0]["message"]["content"]
+            choice = res.json()["choices"][0]
+            text = choice["message"]["content"]
         except (KeyError, IndexError, ValueError, TypeError):
             raise ProviderError(ErrorCode.UNKNOWN_ERROR, "unexpected response shape")
+        if choice.get("finish_reason") == "length":
+            log.warning("LLM output was cut off by the token limit (%s tokens requested)", max_tokens)
         text = (text or "").strip()
         if not text:
             raise ProviderError(ErrorCode.UNKNOWN_ERROR, "empty completion")

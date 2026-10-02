@@ -162,6 +162,9 @@ export default function Create() {
             <span aria-hidden>{g.emoji}</span>{g.label}</button>))}
       </div>
 
+      {(selected?.id === "story" || selected?.id === "script") && (
+        <p className="mt-3 text-xs text-muted">Want a structured story you can review and edit, then convert to a script step by step? <Link className="text-accent hover:underline" to={selected.id === "script" ? "/write/script" : "/write"}>Try Write</Link>.</p>)}
+
       {!selected ? <p className="mt-8 text-center text-muted">Choose a generator above to begin.</p> : started ? (
         <section aria-live="polite" className="card mt-6 p-5">
           <Alert kind="success">Generation started. Your {selected.label.toLowerCase()} is being generated in the background — you can leave this page and you'll get a notification when it finishes.</Alert>

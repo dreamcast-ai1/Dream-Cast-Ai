@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import get_settings
 from .errors import install_error_handlers
 from .providers import register_default_providers
-from .routers import admin, assets, auth, characters, files, generate, jobs, meta, notifications, google_auth, payment_webhook, projects, references, scenes, subscription
+from .routers import admin, assets, auth, characters, files, generate, jobs, meta, notifications, google_auth, payment_webhook, projects, references, scenes, subscription, text
 from .services.worker import WorkerPool
 from .storage import get_storage
 
@@ -49,7 +49,7 @@ def create_app() -> FastAPI:
         """Unauthenticated liveness probe for Render/uptime monitors. Touches nothing (no DB, no providers)."""
         return {"status": "ok"}
 
-    for r in (meta, auth, google_auth, projects, characters, references, files, assets, generate, jobs, notifications, subscription, payment_webhook, scenes, admin):
+    for r in (meta, auth, google_auth, projects, characters, references, files, assets, generate, jobs, notifications, subscription, payment_webhook, scenes, text, admin):
         app.include_router(r.router)
     return app
 
