@@ -40,6 +40,19 @@ class MediaInfo:
         return f"{self.width}:{self.height}"
 
 
+def audio_duration(path: str | Path) -> float | None:
+    """Length of an audio file in seconds (None if FFmpeg is missing or the file can't be read)."""
+    exe = ffmpeg_exe()
+    if not exe:
+        return None
+    try:
+        out = subprocess.run([exe, "-hide_banner", "-i", str(path)], capture_output=True, text=True, timeout=30).stderr
+    except (subprocess.SubprocessError, OSError):
+        return None
+    d = _DURATION.search(out)
+    return round(int(d.group(1)) * 3600 + int(d.group(2)) * 60 + float(d.group(3)), 2) if d else None
+
+
 def probe(path: str | Path) -> MediaInfo | None:
     """Reads duration and resolution. Returns None if ffmpeg is missing or the file isn't decodable media."""
     exe = ffmpeg_exe()

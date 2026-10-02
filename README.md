@@ -498,6 +498,24 @@ free text is scrubbed of anything that looks like a key, token or password, and 
 `403 feature_disabled`; admins keep ticket management). Endpoints: `/api/support/{options,chat,tickets,tickets/{ref},tickets/{ref}/messages}` and
 `/api/admin/support/tickets[/{ref}[/reply]]`. Migration `0009` adds `support_tickets` and `support_messages`.
 
+## Pollinations (image + video), Knowlez (voice), narration and the final render
+
+The text AI stays Gemini (`LLM_PROVIDER=gemini`, `LLM_API_KEY`). Media providers sit behind the same provider interfaces as fal.ai/Google, so any of them can be swapped by configuration:
+
+| Capability | Provider | Variable(s) (server-side only) | Notes |
+|---|---|---|---|
+| Image | Pollinations `GET /image/{prompt}` | `POLLINATIONS_IMAGE_API_KEY` (+ optional `POLLINATIONS_IMAGE_MODEL`) | Bearer key in the header, never in the URL. |
+| Video | Pollinations `GET /video/{prompt}` | `POLLINATIONS_VIDEO_API_KEY` (+ optional `POLLINATIONS_VIDEO_MODEL`, `POLLINATIONS_VIDEO_SECONDS`) | The clip comes back in one long request; the real length is measured from the file. Text-to-video only (image-to-video needs a public image URL, so it is refused honestly). |
+| Voice | Knowlez `POST /v1/tts/synthesise` | `KNOWLEZ_API_KEY` | `X-API-Key` header; mp3. Gender and British/American accent pick the voice; emotion adjusts speed. |
+
+A Pollinations/Knowlez provider is used automatically when its key is set and the fal.ai / Google key for that capability is not; set `IMAGE_PROVIDER`, `VIDEO_PROVIDER` or `VOICE_PROVIDER` to `pollinations` / `pollinations` / `knowlez` to force it.
+Image and video use two different Pollinations keys. Errors map to the usual messages (401 key rejected, 402 credit exhausted, 429 rate limited, 5xx retried once) and none of them contains a key.
+
+**Story → scenes → video → voice → music → final MP4.** Write a story and script, *Create scenes from a script*, then in the project's **Movie** tab press *Generate Video* and *Add narration* per scene
+(the scene's script is spoken by the voice provider; one voice generation each), optionally pick a soundtrack, and *Assemble Movie*. FFmpeg joins the clips, plays each narration over its scene
+(the last frame is held if the narration is longer), lowers any clip sound, loops the soundtrack quietly underneath, and writes an H.264 + AAC MP4 (`+faststart`) that plays in every browser. Assembly never calls an AI provider.
+Everything is stored through the normal storage layer (S3/R2 in production), so the Render disk being ephemeral does not matter.
+
 ## Images and the Library
 
 **Image generation** (Create → Image) uses fal.ai text-to-image (default `fal-ai/flux/schnell`, the cheapest model) behind the same provider

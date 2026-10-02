@@ -84,6 +84,19 @@ def generate_scene_video(scene_id: str, body: GenerateVideoIn | None = None, p: 
     return GenerationOut(job_id=job.id, status=job.status)
 
 
+class NarrationIn(BaseModel):
+    gender: str = Field(default="", max_length=10)
+    emotion: str = Field(default="", max_length=20)
+
+
+@router.post("/scenes/{scene_id}/generate-narration", response_model=GenerationOut, status_code=201)
+def generate_scene_narration(scene_id: str, body: NarrationIn | None = None, p: Project = Depends(owned_project),
+                             user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Speaks the scene's text with the voice provider. Uses one voice generation from your allowance (refunded if the provider fails)."""
+    job = scenes.generate_narration(db, user, p, scenes.get_owned(db, user, p, scene_id), (body.gender if body else ""), (body.emotion if body else ""))
+    return GenerationOut(job_id=job.id, status=job.status)
+
+
 @router.get("/movie")
 def movie_state(p: Project = Depends(owned_project), user: User = Depends(current_user), db: Session = Depends(get_db)):
     state = movie.readiness(db, p)
@@ -93,8 +106,13 @@ def movie_state(p: Project = Depends(owned_project), user: User = Depends(curren
             "movie": asset_out(final) if final else None}
 
 
+class AssembleIn(BaseModel):
+    narration: bool = True                                   # mix each scene's narration (where one exists) over its clip
+    music_asset_id: str | None = Field(default=None, max_length=40)     # optional soundtrack from this project, played quietly under everything
+
+
 @router.post("/movie/assemble", response_model=GenerationOut, status_code=202)
-def assemble(p: Project = Depends(owned_project), user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """Queues the assembly and returns at once. Free of video allowance: it only joins clips you already generated."""
-    job = movie.start_assembly(db, user, p)
+def assemble(body: AssembleIn | None = None, p: Project = Depends(owned_project), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Queues the assembly and returns at once. Free of video allowance: it only joins clips (and narration/music) you already generated."""
+    job = movie.start_assembly(db, user, p, narration=body.narration if body else True, music_asset_id=body.music_asset_id if body else None)
     return GenerationOut(job_id=job.id, status=job.status)

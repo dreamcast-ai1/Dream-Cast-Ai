@@ -56,9 +56,11 @@ def select_provider(db: Session, generator: str, *, allow_unconfigured: bool = F
         raise ProviderError(ErrorCode.API_NOT_CONFIGURED, f"no provider registered for {generator}")
     reason: ProviderError | None = None
     unconfigured: Provider | None = None
+    disabled_in_use = False          # a working provider that an administrator switched off: say that, not "not configured" about a spare one
     for p in candidates:
         st = get(db, p.name)
         if not st["enabled"]:
+            disabled_in_use = disabled_in_use or p.is_configured()
             reason = reason or ProviderError(ErrorCode.PROVIDER_UNAVAILABLE, f"{p.name} disabled by admin",
                                              message=f"The {p.label.lower() or 'generation'} provider has been disabled by an administrator.")
         elif not p.is_configured():
@@ -67,7 +69,7 @@ def select_provider(db: Session, generator: str, *, allow_unconfigured: bool = F
             reason = ProviderError(ErrorCode.QUOTA_EXCEEDED, f"{p.name} daily cap reached")
         else:
             return p
-    if unconfigured and (allow_unconfigured or not reason):
+    if unconfigured and not disabled_in_use and (allow_unconfigured or not reason):
         if allow_unconfigured:
             return unconfigured
         raise ProviderError(ErrorCode.API_NOT_CONFIGURED, f"{unconfigured.name}: {'; '.join(unconfigured.validate_config())}",

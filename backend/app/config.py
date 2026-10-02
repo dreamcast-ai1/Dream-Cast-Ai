@@ -142,6 +142,26 @@ class Settings(BaseSettings):
     image_poll_seconds: float = 2.0
     image_max_download_mb: int = 25
 
+    # Pollinations (https://gen.pollinations.ai): image and video use SEPARATE secret keys (sk_...), both server-side only.
+    # It is used automatically when its key is set and the fal.ai provider for that capability has no key (or IMAGE_PROVIDER / VIDEO_PROVIDER=pollinations).
+    pollinations_base_url: str = "https://gen.pollinations.ai"
+    pollinations_image_api_key: str = ""
+    pollinations_image_model: str = ""      # empty = Pollinations' current default image model
+    pollinations_image_timeout_seconds: float = 120.0
+    pollinations_video_api_key: str = ""
+    pollinations_video_model: str = ""      # empty = Pollinations' current default video model
+    pollinations_video_seconds: int = 0     # clip length asked from Pollinations (model-dependent, e.g. 4/6/8); 0 = the model's default
+    pollinations_video_timeout_seconds: float = 420.0    # video comes back in ONE long request; the job timeout (JOB_TIMEOUT_SECONDS) still applies
+
+    # Knowlez text-to-speech (https://api-tts.knowlez.com), server-side only. Used when its key is set and no Google voice key is, or VOICE_PROVIDER=knowlez.
+    knowlez_api_key: str = ""
+    knowlez_base_url: str = "https://api-tts.knowlez.com"
+    knowlez_voice_female: str = "af_bella"
+    knowlez_voice_male: str = "am_adam"
+    knowlez_voice_british_female: str = "bf_emma"
+    knowlez_voice_british_male: str = "bm_george"
+    knowlez_timeout_seconds: float = 90.0
+
     face_provider: str = "fal"
     face_provider_api_key: str = ""
     face_provider_model: str = "fal-ai/face-swap"
@@ -207,7 +227,8 @@ class Settings(BaseSettings):
         for name in ("auth_secret_key", "auth_public_key", "razorpay_key_id", "razorpay_key_secret", "razorpay_webhook_secret", "llm_api_key",
                      "music_api_key", "voice_api_key", "video_provider_api_key", "face_provider_api_key", "image_provider_api_key",
                      "smtp_host", "smtp_username", "smtp_password", "smtp_from_email", "google_client_id", "google_client_secret", "brevo_api_key",
-                     "s3_bucket", "s3_endpoint_url", "s3_access_key_id", "s3_secret_access_key"):
+                     "s3_bucket", "s3_endpoint_url", "s3_access_key_id", "s3_secret_access_key", "pollinations_image_api_key",
+                     "pollinations_video_api_key", "knowlez_api_key"):
             value = getattr(self, name).strip()
             setattr(self, name, "" if value.startswith(PLACEHOLDER_PREFIX) else value)     # an unfilled placeholder is not a credential
         if not self.database_url.strip():

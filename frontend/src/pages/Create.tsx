@@ -1,5 +1,5 @@
-import { Info, Wand2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Info, RefreshCw, Wand2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { CharacterPicker } from "../components/create/CharacterPicker";
 import { OptionsForm } from "../components/create/OptionsForm";
@@ -8,6 +8,7 @@ import { ReferencePicker } from "../components/create/ReferencePicker";
 import { FaceInputs } from "../components/create/FaceInputs";
 import { TextSourcePicker } from "../components/create/TextSourcePicker";
 import { VideoContextPicker } from "../components/create/VideoContextPicker";
+import { GenerationPlaceholder, GenerationResult } from "../components/GenerationResult";
 import { JobStatus } from "../components/JobStatus";
 import { SelectField } from "../components/ui/Field";
 import { Alert, ErrorState, PageHeader, PageLoader, Spinner } from "../components/ui/feedback";
@@ -19,6 +20,11 @@ import { dialogueOf, scenesOf, sceneText } from "../lib/assetText";
 import { ACTIVE_STATUSES, type AssetDetail, type GeneratorSchema, type Job, type Project, type RefineResult, type UsageItem } from "../lib/types";
 
 type Options = Record<string, unknown>;
+
+/** The generation currently shown here, remembered for this tab so a refresh or a visit to another page doesn't lose it. */
+const ACTIVE_JOB_KEY = "dc-create-job";
+const rememberJob = (id: string | null) => { try { id ? sessionStorage.setItem(ACTIVE_JOB_KEY, id) : sessionStorage.removeItem(ACTIVE_JOB_KEY); } catch { /* storage unavailable */ } };
+const rememberedJob = () => { try { return sessionStorage.getItem(ACTIVE_JOB_KEY); } catch { return null; } };
 
 function defaultsFor(s?: GeneratorSchema): Options {
   const o: Options = {};
@@ -48,7 +54,10 @@ export default function Create() {
   const [busy, setBusy] = useState<"" | "refine" | "generate">("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [started, setStarted] = useState<Job | null>(null);
+  const [started, setStartedState] = useState<Job | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const wasActive = useRef(false);
+  const setStarted = (j: Job | null) => { rememberJob(j?.id ?? null); setStartedState(j); };
 
   const { isGeneratorEnabled } = useFeatures();
   const generators = (schema.data?.generators ?? []).filter((g) => isGeneratorEnabled(g.id));      // unavailable generators are not offered
@@ -133,8 +142,39 @@ export default function Create() {
     } catch (e) { setError(errorMessage(e)); } finally { setBusy(""); }
   };
 
-  const refreshStarted = async () => { if (started) setStarted(await api<Job>(`/api/jobs/${started.id}`).catch(() => started)); };
-  usePolling(refreshStarted, !!started && ACTIVE_STATUSES.includes(started.status), 4000);
+  // Poll only while the job is active (the existing job API; no new mechanism). The answer is applied only if it is still the job on screen,
+  // so a slow reply for an older generation can never replace a newer one.
+  const refreshStarted = async () => {
+    if (!started) return;
+    const id = started.id;
+    const fresh = await api<Job>(`/api/jobs/${id}`).catch(() => null);
+    if (fresh) setStartedState((cur) => (cur?.id === id ? fresh : cur));
+  };
+  const startedActive = !!started && ACTIVE_STATUSES.includes(started.status);
+  usePolling(refreshStarted, startedActive, 3000);
+  useEffect(() => {          // the job finished: refresh the allowance counter once (never twice for the same completion)
+    if (startedActive) { wasActive.current = true; return; }
+    if (wasActive.current && started) { wasActive.current = false; void usage.reload(); }
+  }, [startedActive, started]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Back on this page (refresh, or returned from elsewhere): pick the generation up again, finished or still running.
+  useEffect(() => {
+    const id = rememberedJob();
+    if (!id || started || fromId) return;
+    let alive = true;
+    api<Job>(`/api/jobs/${id}`).then((j) => { if (alive && !started) { setStartedState(j); if (routeGen !== j.type) nav(`/create/${j.type}`, { replace: true }); } }).catch(() => rememberJob(null));
+    return () => { alive = false; };
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const retry = async () => {
+    if (!started || retrying) return;
+    setRetrying(true); setError("");
+    try {
+      const r = await api<{ job_id: string }>(`/api/jobs/${started.id}/regenerate`, { method: "POST" });      // a NEW job through the normal checks; the old one is untouched
+      setStarted(await api<Job>(`/api/jobs/${r.job_id}`));
+      void usage.reload();
+    } catch (e) { setError(errorMessage(e)); } finally { setRetrying(false); }
+  };
 
   const reset = () => { setStarted(null); setRefined(null); setPrompt(""); setParentId(null); setRefIds([]); setOptions(defaultsFor(selected)); setError(""); setNotice(""); if (fromId || params.toString()) nav(`/create/${selected?.id}`, { replace: true }); };
 
@@ -166,13 +206,22 @@ export default function Create() {
         <p className="mt-3 text-xs text-muted">Want a structured story you can review and edit, then convert to a script step by step? <Link className="text-accent hover:underline" to={selected.id === "script" ? "/write/script" : "/write"}>Try Write</Link>.</p>)}
 
       {!selected ? <p className="mt-8 text-center text-muted">Choose a generator above to begin.</p> : started ? (
-        <section aria-live="polite" className="card mt-6 p-5">
-          <Alert kind="success">Generation started. Your {selected.label.toLowerCase()} is being generated in the background — you can leave this page and you'll get a notification when it finishes.</Alert>
+        <section aria-live="polite" className="card rise mt-6 p-5">
+          {startedActive && <Alert kind="success">Generation started. Your {selected.label.toLowerCase()} is being generated — it will appear here as soon as it is ready. You can also leave this page; you'll get a notification.</Alert>}
+          {startedActive && <div className="mt-4"><GenerationPlaceholder type={started.type} /></div>}
           <div className="mt-5"><JobStatus job={started} title={`${selected.label} generation`} type={started.type} /></div>
+          {error && <div className="mt-4"><Alert kind="error">{error}</Alert></div>}
+          {started.status === "COMPLETED" && <div className="mt-6 border-t border-border pt-5"><GenerationResult key={started.id} job={started} onRegenerate={retry} regenerating={retrying} /></div>}
+          {(started.status === "FAILED" || started.status === "CANCELLED") && (
+            <div className="pop mt-4 flex flex-wrap items-center gap-2">
+              <button className="btn-primary" onClick={retry} disabled={retrying}>{retrying ? <Spinner /> : <RefreshCw className="h-4 w-4" aria-hidden />} Retry</button>
+              <Link className="btn-secondary" to={`/create/${started.type}?from=${started.id}`}>Edit prompt</Link>
+              <p className="text-xs text-muted">If it never reached the provider, your allowance isn't used.</p>
+            </div>)}
           <div className="mt-6 flex flex-wrap gap-2">
             {started.project_id && <Link className="btn-secondary" to={`/projects/${started.project_id}`}>View project</Link>}
-            <Link className="btn-secondary" to={`/history/${started.id}`}>View generation</Link>
-            <button className="btn-primary" onClick={reset}>Continue creating</button>
+            <Link className="btn-ghost" to={`/history/${started.id}`}>View generation</Link>
+            <button className="btn-secondary ml-auto" onClick={reset}>Continue creating</button>
           </div>
         </section>
       ) : (

@@ -32,7 +32,7 @@ export default function Dashboard() {
 
       <section aria-labelledby="quick">
         <h2 id="quick" className="mb-3 text-lg font-semibold">Quick create</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">{generators.map((g) => <GeneratorCard key={g.id} g={g} />)}</div>
+        <div className="stagger grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">{generators.map((g) => <GeneratorCard key={g.id} g={g} />)}</div>
       </section>
 
       <section aria-labelledby="recent-projects">

@@ -44,6 +44,8 @@ def status_of(db: Session, scene: Scene) -> str:
 def scene_out(db: Session, scene: Scene) -> dict:
     job = db.get(GenerationJob, scene.last_job_id) if scene.last_job_id else None
     clip = clip_asset(db, scene)
+    nar = narration_asset(db, scene)
+    njob = db.get(GenerationJob, scene.narration_job_id) if scene.narration_job_id else None
     names = [c.name for c in db.scalars(select(Character).where(Character.id.in_(scene.character_ids or []), Character.project_id == scene.project_id))]
     videos = [a for a in db.scalars(select(GeneratedAsset).where(GeneratedAsset.project_id == scene.project_id, GeneratedAsset.type == "VIDEO")
                                     .order_by(GeneratedAsset.created_at.desc())) if (a.meta or {}).get("scene_id") == scene.id and a.file_path]
@@ -54,6 +56,8 @@ def scene_out(db: Session, scene: Scene) -> dict:
                       "duration_seconds": clip.duration_seconds} if clip else None,
             "assets": [{"id": a.id, "version": a.version, "created_at": a.created_at, "selected": bool(clip and a.id == clip.id)} for a in videos],
             "job": {"id": job.id, "status": job.status, "stage": job.stage, "error_message": job.error_message} if job else None,
+            "narration": ({"asset_id": nar.id, "url": f"/api/files/asset/{nar.id}", "duration_seconds": nar.duration_seconds} if nar else None),
+            "narration_job": ({"id": njob.id, "status": njob.status, "error_message": njob.error_message} if njob else None),
             "script_asset_id": scene.script_asset_id}
 
 
@@ -162,6 +166,39 @@ def generate_video(db: Session, user: User, project: Project, scene: Scene, aspe
     scene.last_job_id = job.id
     db.commit()
     return job
+
+
+def narration_text(scene: Scene) -> str:
+    """What is spoken: the scene's script/dialogue, else its description."""
+    return " ".join((scene.script or scene.description or "").split())
+
+
+def generate_narration(db: Session, user: User, project: Project, scene: Scene, gender: str = "", emotion: str = "") -> GenerationJob:
+    """Queues ONE normal voice job for the scene's text (same voice allowance, refund and feature rules as any voice)."""
+    prev = db.get(GenerationJob, scene.narration_job_id) if scene.narration_job_id else None
+    if prev and prev.status in ACTIVE_STATUSES:
+        raise AppError("This scene's narration is already being generated.", 409, "scene_busy")
+    text = narration_text(scene)
+    if not text:
+        raise AppError("Add a script or description to this scene first: that is the text that will be spoken.", 422, "validation_error")
+    options = {k: v for k, v in (("gender", gender), ("emotion", emotion)) if v}
+    job = generation.submit(db, user, "voice", text, text, options, project.id, [], parent_id=prev.id if prev else None,
+                            extra_meta={"scene_id": scene.id, "scene_narration": True})
+    scene.narration_job_id = job.id
+    db.commit()
+    return job
+
+
+def attach_narration(db: Session, scene_id: str, asset: GeneratedAsset) -> None:
+    scene = db.get(Scene, scene_id)
+    if scene and scene.project_id == asset.project_id:
+        scene.narration_asset_id = asset.id
+        db.commit()
+
+
+def narration_asset(db: Session, scene: Scene) -> GeneratedAsset | None:
+    a = db.get(GeneratedAsset, scene.narration_asset_id) if scene.narration_asset_id else None
+    return a if a and a.file_path else None
 
 
 def attach_video(db: Session, scene_id: str, asset: GeneratedAsset) -> None:

@@ -445,7 +445,7 @@ def test_gemini_is_only_the_text_provider(client, gemini):
         if p.name.startswith(("fal-", "huggingface", "google")):
             assert not any(g in p.generators for g in ("story", "script", "lyrics")), p.name       # media providers are untouched
     names = {g: [p.name for p in registry.for_generator(g)] for g in ("image", "video", "music", "voice")}
-    assert names == {"image": ["fal-image"], "video": ["fal-video"], "music": ["huggingface"], "voice": ["google"]}
+    assert names == {"image": ["fal-image", "pollinations-image"], "video": ["fal-video", "pollinations-video"], "music": ["huggingface"], "voice": ["google", "knowlez-voice"]}
 
 
 def test_nothing_is_sent_to_a_media_provider(client, make_user, gemini, monkeypatch):

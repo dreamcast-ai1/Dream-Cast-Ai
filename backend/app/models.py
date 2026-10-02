@@ -275,6 +275,8 @@ class Scene(Base, TimestampedMixin):
     duration_seconds: Mapped[int] = mapped_column(Integer, default=10)     # one clip: 10..30 s
     video_asset_id: Mapped[str | None] = mapped_column(String(32), nullable=True)   # the clip used in the movie
     last_job_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    narration_asset_id: Mapped[str | None] = mapped_column(String(32), nullable=True)   # the spoken narration used in the movie
+    narration_job_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     script_asset_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # script this scene came from, if any
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, onupdate=_now)
 

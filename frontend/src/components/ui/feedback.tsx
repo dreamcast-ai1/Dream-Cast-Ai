@@ -22,7 +22,7 @@ const alertStyles = {
 export function Alert({ kind = "info", children, action }: { kind?: keyof typeof alertStyles; children: ReactNode; action?: ReactNode }) {
   const { cls, Icon } = alertStyles[kind];
   return (
-    <div role={kind === "error" ? "alert" : "status"} className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-sm ${cls}`}>
+    <div role={kind === "error" ? "alert" : "status"} className={`fade-in flex items-start gap-3 rounded-lg border px-4 py-3 text-sm ${cls}`}>
       <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
       <div className="min-w-0 flex-1 break-words">{children}</div>
       {action}
@@ -38,7 +38,7 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
 
 export function EmptyState({ icon, title, hint, action }: { icon?: ReactNode; title: string; hint?: string; action?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center rounded-xl border border-dashed border-border px-6 py-12 text-center">
+    <div className="rise flex flex-col items-center rounded-xl border border-dashed border-border px-6 py-12 text-center">
       {icon && <div className="mb-3 text-3xl" aria-hidden>{icon}</div>}
       <p className="font-medium">{title}</p>
       {hint && <p className="mt-1 max-w-sm text-sm text-muted">{hint}</p>}

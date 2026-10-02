@@ -58,6 +58,8 @@ export interface Scene {
   visual_prompt: string; duration_seconds: number; status: "DRAFT" | "GENERATING" | "READY" | "FAILED"; video: SceneVideo | null;
   assets: { id: string; version: number; created_at: string; selected: boolean }[];
   job: { id: string; status: string; stage: string; error_message: string | null } | null; notes?: string[];
+  narration?: { asset_id: string; url: string; duration_seconds: number | null } | null;
+  narration_job?: { id: string; status: string; error_message: string | null } | null;
 }
 export interface MovieState {
   scenes: { scene_id: string; number: number; title: string; ready: boolean; duration_seconds: number | null }[];

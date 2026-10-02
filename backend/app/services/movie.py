@@ -54,17 +54,23 @@ def latest_movie(db: Session, project: Project) -> GeneratedAsset | None:
     return None
 
 
-def start_assembly(db: Session, user: User, project: Project) -> GenerationJob:
+def start_assembly(db: Session, user: User, project: Project, narration: bool = True, music_asset_id: str | None = None) -> GenerationJob:
     """Validates, then queues the assembly job. Nothing is created (and nothing is charged) if a scene is missing."""
     state = readiness(db, project)
     if not state["can_assemble"]:
         raise AppError(" ".join(state["missing"]), 422, "scenes_missing")
     if active_job(db, project, user.id):
         raise AppError("Your movie is already being assembled.", 409, "assembly_running")
+    music = None
+    if music_asset_id:
+        music = db.get(GeneratedAsset, music_asset_id)
+        if not music or music.project_id != project.id or music.user_id != user.id or music.type != "MUSIC" or not music.file_path:
+            raise AppError("The selected music couldn't be found in this project.", 422, "validation_error")
     ordered = scenes.list_scenes(db, project.id)
+    narrations = [(n.id if (narration and (n := scenes.narration_asset(db, s))) else None) for s in ordered]
     job = GenerationJob(user_id=user.id, project_id=project.id, type=MOVIE_JOB, original_prompt=f"Assemble movie ({len(ordered)} scenes)",
                         options={"scene_ids": [s.id for s in ordered], "clips": [scenes.clip_asset(db, s).id for s in ordered],
-                                 "numbers": [s.number for s in ordered]})
+                                 "numbers": [s.number for s in ordered], "narrations": narrations, "music": music.id if music else None})
     db.add(job)
     db.commit()
     return job
@@ -85,29 +91,60 @@ def _local_copy(asset: GeneratedAsset, workdir: str, index: int) -> str:
     return path
 
 
-def _build_command(exe: str, paths: list[str], infos: list[media.MediaInfo], out: str) -> list[str]:
+def _build_command(exe: str, paths: list[str], infos: list[media.MediaInfo], out: str, narrations: list[tuple[str, float] | None] | None = None) -> list[str]:
     """One ffmpeg call: every clip is scaled/padded to the first clip's size (so mixed sizes still join), then concatenated.
-    If any clip has sound, silent clips get silent audio so the audio track stays in sync."""
+    A scene with narration plays it over the clip (the clip's own sound is lowered); if the narration is longer than the clip, the last frame is
+    held until it ends. If any scene has sound, silent scenes get silent audio so the audio track stays in sync."""
+    narrations = narrations or [None] * len(paths)
     w, h = (infos[0].width // 2 * 2, infos[0].height // 2 * 2)
-    any_audio = any(i.has_audio for i in infos)
-    cmd, parts, labels, extra = [exe, "-y", "-hide_banner", "-loglevel", "error"], [], [], len(paths)
+    any_audio = any(i.has_audio for i in infos) or any(narrations)
+    cmd, parts, labels = [exe, "-y", "-hide_banner", "-loglevel", "error"], [], []
     for p in paths:
         cmd += ["-i", p]
+    nar_index: dict[int, int] = {}
+    for n, nar in enumerate(narrations):
+        if nar:
+            nar_index[n] = len(paths) + len(nar_index)
+            cmd += ["-i", nar[0]]
+    extra = len(paths) + len(nar_index)
     for n, info in enumerate(infos):
+        clip_d = info.duration or 1.0
+        nar = narrations[n]
+        total = max(clip_d, nar[1]) if nar else clip_d
+        hold = f",tpad=stop_mode=clone:stop_duration={total - clip_d:.3f}" if total - clip_d > 0.05 else ""
         parts.append(f"[{n}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,"
-                     f"setsar=1,fps={FPS},format=yuv420p[v{n}]")
+                     f"setsar=1,fps={FPS},format=yuv420p{hold}[v{n}]")
         labels.append(f"[v{n}]")
-        if any_audio:
+        if not any_audio:
+            continue
+        fmt = "aresample=44100,aformat=channel_layouts=stereo"
+        if nar:
+            parts.append(f"[{nar_index[n]}:a]{fmt},apad=whole_dur={total:.3f}[nar{n}]")
             if info.has_audio:
-                parts.append(f"[{n}:a]aresample=44100,aformat=channel_layouts=stereo[a{n}]")
+                parts.append(f"[{n}:a]{fmt},volume=0.3,apad=whole_dur={total:.3f}[ca{n}]")
+                parts.append(f"[ca{n}][nar{n}]amix=inputs=2:duration=longest:dropout_transition=0,atrim=duration={total:.3f}[a{n}]")
             else:
-                cmd += ["-f", "lavfi", "-t", f"{info.duration or 1:.3f}", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
-                parts.append(f"[{extra}:a]aformat=channel_layouts=stereo[a{n}]")
-                extra += 1
-            labels.append(f"[a{n}]")
+                parts.append(f"[nar{n}]atrim=duration={total:.3f}[a{n}]")
+        elif info.has_audio:
+            parts.append(f"[{n}:a]{fmt}[a{n}]")
+        else:
+            cmd += ["-f", "lavfi", "-t", f"{clip_d:.3f}", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
+            parts.append(f"[{extra}:a]aformat=channel_layouts=stereo[a{n}]")
+            extra += 1
+        labels.append(f"[a{n}]")
     parts.append("".join(labels) + f"concat=n={len(paths)}:v=1:a={1 if any_audio else 0}[v]" + ("[a]" if any_audio else ""))
     cmd += ["-filter_complex", ";".join(parts), "-map", "[v]"] + (["-map", "[a]", "-c:a", "aac", "-b:a", "128k"] if any_audio else ["-an"])
     return cmd + ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-movflags", "+faststart", out]
+
+
+def _music_command(exe: str, movie_path: str, music_path: str, out: str, duration: float, has_audio: bool) -> list[str]:
+    """Second pass: loops the soundtrack under the finished movie at low volume. The picture is copied, not re-encoded."""
+    cmd = [exe, "-y", "-hide_banner", "-loglevel", "error", "-i", movie_path, "-stream_loop", "-1", "-i", music_path]
+    if has_audio:
+        graph = "[1:a]aresample=44100,aformat=channel_layouts=stereo,volume=0.2[m];[0:a]aresample=44100,aformat=channel_layouts=stereo[v0];[v0][m]amix=inputs=2:duration=first:dropout_transition=0[a]"
+    else:
+        graph = "[1:a]aresample=44100,aformat=channel_layouts=stereo,volume=0.5[a]"
+    return cmd + ["-filter_complex", graph, "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-t", f"{duration:.3f}", "-movflags", "+faststart", out]
 
 
 def _run_ffmpeg(db: Session, job: GenerationJob, cmd: list[str], workdir: str, timeout: float) -> bool:
@@ -130,6 +167,49 @@ def _run_ffmpeg(db: Session, job: GenerationJob, cmd: list[str], workdir: str, t
         tail = Path(log_path).read_text(errors="replace")[-600:]
         raise _fail("The movie couldn't be assembled. Check that every scene clip plays, then try again.", f"ffmpeg exit {proc.returncode}: {tail}")
     return True
+
+
+def _load_narrations(db: Session, job: GenerationJob, clips: list, workdir: str, notes: list[str]) -> list[tuple[str, float] | None]:
+    """(local path, seconds) of each scene's narration, or None. A missing or unreadable narration is skipped with a note, never fatal."""
+    out: list[tuple[str, float] | None] = []
+    ids = job.options.get("narrations") or [None] * len(clips)
+    for i, ((number, _), asset_id) in enumerate(zip(clips, ids)):
+        a = db.get(GeneratedAsset, asset_id) if asset_id else None
+        if not a or not a.file_path or not get_storage().exists(a.file_path):
+            if asset_id:
+                notes.append(f"Scene {number}'s narration was no longer available and was skipped.")
+            out.append(None)
+            continue
+        path = _local_copy(a, workdir, 1000 + i)
+        if get_storage().local_path(a.file_path) is None:
+            os.rename(path, path + ".mp3")
+            path += ".mp3"
+        dur = media.audio_duration(path)
+        if not dur:
+            notes.append(f"Scene {number}'s narration couldn't be read and was skipped.")
+            out.append(None)
+        else:
+            out.append((path, dur))
+    return out
+
+
+def _add_music(db: Session, job: GenerationJob, exe: str, movie_path: str, workdir: str, timeout: float, notes: list[str]) -> str | None:
+    """Optional soundtrack (job.options['music']). Returns the path of the final file, or None if the job was cancelled."""
+    music_id = job.options.get("music")
+    a = db.get(GeneratedAsset, music_id) if music_id else None
+    if not a or not a.file_path or not get_storage().exists(a.file_path):
+        if music_id:
+            notes.append("The selected music was no longer available, so the movie has no soundtrack.")
+        return movie_path
+    info = media.probe(movie_path)
+    music_path = _local_copy(a, workdir, 2000)
+    if get_storage().local_path(a.file_path) is None:
+        os.rename(music_path, music_path + f".{a.format or 'mp3'}")
+        music_path += f".{a.format or 'mp3'}"
+    final = os.path.join(workdir, "movie_music.mp4")
+    if not _run_ffmpeg(db, job, _music_command(exe, movie_path, music_path, final, (info.duration if info else None) or 10, bool(info and info.has_audio)), workdir, timeout):
+        return None
+    return final
 
 
 def run_assembly(db: Session, job: GenerationJob) -> None:
@@ -162,11 +242,15 @@ def run_assembly(db: Session, job: GenerationJob) -> None:
         for (number, _), info in list(zip(clips, infos))[1:]:
             if (info.width, info.height) != (infos[0].width, infos[0].height):
                 notes.append(f"Scene {number} was resized to match Scene {clips[0][0]}.")
+        narrations = _load_narrations(db, job, clips, workdir, notes)
         out = os.path.join(workdir, "movie.mp4")
         jobs.set_stage(db, job, "ASSEMBLING")
-        total = sum(i.duration or 10 for i in infos)
+        total = sum(max(i.duration or 10, (nr[1] if nr else 0)) for i, nr in zip(infos, narrations))
         timeout = min(float(get_settings().job_timeout_seconds), max(120.0, total * 8))
-        if not _run_ffmpeg(db, job, _build_command(exe, paths, infos, out), workdir, timeout):
+        if not _run_ffmpeg(db, job, _build_command(exe, paths, infos, out, narrations), workdir, timeout):
+            return jobs.cancel_now(db, job)
+        out = _add_music(db, job, exe, out, workdir, timeout, notes)
+        if out is None:
             return jobs.cancel_now(db, job)
         jobs.set_stage(db, job, "FINALIZING")
         asset = _store_movie(db, job, project, clips, out, notes)

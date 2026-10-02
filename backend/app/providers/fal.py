@@ -83,6 +83,17 @@ class FalQueueProvider(Provider):
                                 message=f"The {self.what} provider rejected this request. Try a different prompt or options.")
         raise_for_provider_status(res, self.what)
 
+    def _json(self, res: httpx.Response) -> dict:
+        """A 200 whose body isn't a JSON object is a malformed provider response: a clear, retryable failure instead of an unexpected crash."""
+        try:
+            body = res.json()
+        except ValueError:
+            body = None
+        if not isinstance(body, dict):
+            raise ProviderError(ErrorCode.GENERATION_FAILED, "malformed provider response", transient=True,
+                                message=f"The {self.what} provider sent an unreadable answer. Please try again.")
+        return body
+
     # --- Provider interface
     def generate(self, request: GenerationRequest) -> str:
         model, payload = self.build_request(request)
@@ -92,7 +103,7 @@ class FalQueueProvider(Provider):
         except httpx.HTTPError as e:
             raise network_error(e, self.what)
         self._raise(res)
-        body = res.json()
+        body = self._json(res)
         if not body.get("request_id") or not body.get("status_url") or not body.get("response_url"):
             raise ProviderError(ErrorCode.GENERATION_FAILED, "submit response missing urls", transient=True,
                                 message=f"The {self.what} provider didn't accept the job. Please try again.")
@@ -113,7 +124,7 @@ class FalQueueProvider(Provider):
                 raise network_error(e, self.what)
             log.warning("status poll blip %s/%s for %s", n, MAX_STATUS_BLIPS, ref["r"])
             return ProviderJobStatus("PROCESSING")
-        state = res.json().get("status", "")
+        state = self._json(res).get("status", "")
         if state == "COMPLETED":
             return ProviderJobStatus("COMPLETED")           # output is fetched by download_result
         return ProviderJobStatus("PROCESSING", stage="GENERATING")   # IN_QUEUE / IN_PROGRESS: no real percentage is available
@@ -130,7 +141,7 @@ class FalQueueProvider(Provider):
                                 message=f"The {self.what} provider couldn't complete this request. Try changing the prompt or options.")
         if res.status_code >= 400:
             self._raise(res)
-        url = self.output_url(res.json())
+        url = self.output_url(self._json(res))
         if not url:
             raise ProviderError(ErrorCode.GENERATION_FAILED, "no output url in result",
                                 message=f"The {self.what} provider finished but returned no result.")

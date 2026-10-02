@@ -1,13 +1,15 @@
-import { ChevronDown, ChevronUp, Clapperboard, Download, FileText, Film, Pencil, Plus, Trash2, Video } from "lucide-react";
+import { ChevronDown, ChevronUp, Clapperboard, Download, FileText, Film, Mic, Pencil, Plus, Trash2, Video } from "lucide-react";
 import { useState } from "react";
 import { VideoPlayer } from "../../components/VideoPlayer";
 import { SelectField, TextArea, TextField } from "../../components/ui/Field";
+import { AuthMedia } from "../../components/ui/AuthMedia";
+import { useFeatures } from "../../context/FeaturesContext";
 import { ConfirmDialog, Modal } from "../../components/ui/Modal";
 import { Alert, EmptyState, ErrorState, PageLoader, Spinner, StatusBadge } from "../../components/ui/feedback";
 import { useAsync } from "../../hooks/useAsync";
 import { usePolling } from "../../hooks/usePolling";
 import { api, downloadAsset, errorMessage } from "../../lib/api";
-import type { Asset, Character, MovieState, Scene } from "../../lib/types";
+import { ACTIVE_STATUSES, type Asset, type Character, type MovieState, type Scene } from "../../lib/types";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const STAGE_WORDS: Record<string, string> = { QUEUED: "Queued", PREPARING: "Preparing", ASSEMBLING: "Assembling", FINALIZING: "Finalizing", STORING: "Finalizing", PROCESSING: "Preparing" };
@@ -77,8 +79,9 @@ function ImportScript({ projectId, hasScenes, onClose, onDone }: { projectId: st
   );
 }
 
-function SceneCard({ scene, busy, first, last, onMove, onEdit, onDelete, onGenerate }: { scene: Scene; busy: boolean; first: boolean; last: boolean; onMove: (delta: number) => void; onEdit: () => void; onDelete: () => void; onGenerate: () => void }) {
+function SceneCard({ scene, busy, first, last, canNarrate, onMove, onEdit, onDelete, onGenerate, onNarrate }: { scene: Scene; busy: boolean; first: boolean; last: boolean; canNarrate: boolean; onMove: (delta: number) => void; onEdit: () => void; onDelete: () => void; onGenerate: () => void; onNarrate: () => void }) {
   const working = scene.status === "GENERATING";
+  const narrating = !!scene.narration_job && ACTIVE_STATUSES.includes(scene.narration_job.status);
   return (
     <li className="card p-4" aria-label={`Scene ${pad(scene.number)}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -94,10 +97,14 @@ function SceneCard({ scene, busy, first, last, onMove, onEdit, onDelete, onGener
       {scene.description && <p className="mt-2 line-clamp-3 text-sm text-muted">{scene.description}</p>}
       {scene.characters.length > 0 && <p className="mt-1 text-xs text-muted">Characters: {scene.characters.join(", ")}</p>}
       {scene.status === "FAILED" && scene.job?.error_message && <p className="mt-2 text-sm text-danger">{scene.job.error_message}</p>}
-      {scene.video && <div className="mt-3 max-w-md"><VideoPlayer assetId={scene.video.asset_id} thumbnail={scene.video.thumbnail_url} title={`Scene ${pad(scene.number)}`} /></div>}
+      {scene.video && <div className="mt-3 max-w-md"><VideoPlayer assetId={scene.video.asset_id} thumbnail={scene.video.thumbnail_url} title={`Scene ${pad(scene.number)}`} eager /></div>}
       {working && <p className="mt-3 flex items-center gap-2 text-sm text-muted"><Spinner className="!h-4 !w-4" />Creating this scene… {STAGE_WORDS[scene.job?.stage ?? ""] ?? ""}</p>}
+      {scene.narration && <div className="reveal mt-3 max-w-md rounded-lg bg-raised p-2"><p className="mb-1 text-xs text-muted">Narration{scene.narration.duration_seconds ? ` · ${scene.narration.duration_seconds.toFixed(1)} s` : ""}</p><AuthMedia src={scene.narration.url} kind="audio" label={`Narration for scene ${pad(scene.number)}`} /></div>}
+      {narrating && <p className="mt-3 flex items-center gap-2 text-sm text-muted"><Spinner className="!h-4 !w-4" />Recording narration…</p>}
+      {scene.narration_job?.status === "FAILED" && scene.narration_job.error_message && <p className="mt-2 text-sm text-danger">{scene.narration_job.error_message}</p>}
       <div className="mt-3 flex flex-wrap gap-2">
         <button className="btn-primary" disabled={working || busy} onClick={onGenerate}><Video className="h-4 w-4" aria-hidden />{scene.video ? "Generate again" : "Generate Video"}</button>
+        {canNarrate && <button className="btn-secondary" disabled={narrating || busy} onClick={onNarrate}><Mic className="h-4 w-4" aria-hidden />{scene.narration ? "Narrate again" : "Add narration"}</button>}
         <button className="btn-secondary" onClick={onEdit} disabled={working}><Pencil className="h-4 w-4" aria-hidden />Edit</button>
         <button className="btn-ghost text-danger" onClick={onDelete} disabled={working} aria-label={`Delete scene ${pad(scene.number)}`}><Trash2 className="h-4 w-4" aria-hidden /></button>
       </div>
@@ -118,7 +125,12 @@ export function Movie({ projectId, onChanged }: { projectId: string; onChanged: 
 
   const items = scenes.data?.items ?? [];
   const m = movie.data;
-  const working = items.some((s) => s.status === "GENERATING") || !!m?.active_job;
+  const working = items.some((s) => s.status === "GENERATING" || (!!s.narration_job && ACTIVE_STATUSES.includes(s.narration_job.status))) || !!m?.active_job;
+  const hasNarration = items.some((s) => !!s.narration);
+  const [withNarration, setWithNarration] = useState(true);
+  const [musicId, setMusicId] = useState("");
+  const music = useAsync(() => api<Asset[]>(`/api/projects/${projectId}/assets?type=MUSIC`), [projectId]);
+  const { isGeneratorEnabled } = useFeatures();
   const refresh = async () => {
     await Promise.all([scenes.reload(), movie.reload()]);
     onChanged();
@@ -153,7 +165,8 @@ export function Movie({ projectId, onChanged }: { projectId: string; onChanged: 
 
       {items.length === 0 ? <EmptyState icon={<Film className="h-6 w-6" />} title="No scenes yet." hint="Add scenes one by one, or create them from a script. Writing scenes is free." /> : (
         <ol className="space-y-3">{items.map((s, i) => (
-          <SceneCard key={s.id} scene={s} busy={busy} first={i === 0} last={i === items.length - 1}
+          <SceneCard key={s.id} scene={s} busy={busy} first={i === 0} last={i === items.length - 1} canNarrate={isGeneratorEnabled("voice")}
+            onNarrate={() => act(() => api(`/api/projects/${projectId}/scenes/${s.id}/generate-narration`, { method: "POST", json: {} }), `Recording Scene ${pad(s.number)}'s narration from its script. This uses one voice generation.`)}
             onMove={(d) => act(() => api(`/api/projects/${projectId}/scenes/${s.id}`, { method: "PATCH", json: { number: s.number + d } }))} onEdit={() => setEditing(s)} onDelete={() => setDeleting(s)}
             onGenerate={() => act(() => api(`/api/projects/${projectId}/scenes/${s.id}/generate-video`, { method: "POST", json: {} }), `Making Scene ${pad(s.number)}. This uses one video generation.`)} />))}</ol>)}
 
@@ -162,16 +175,20 @@ export function Movie({ projectId, onChanged }: { projectId: string; onChanged: 
           <h3 className="text-base font-semibold">Assemble Movie</h3>
           {!m.can_assemble && <ul className="mt-2 space-y-1 text-sm text-muted">{m.missing.map((t) => <li key={t}>{t}</li>)}</ul>}
           {m.active_job ? <p className="mt-3 flex items-center gap-2 text-sm"><Spinner className="!h-4 !w-4" />{stage}… You can leave this page; we'll tell you when your movie is ready.</p> : (
-            <div className="mt-3"><button className="btn-primary" disabled={!m.can_assemble || busy}
-              onClick={() => act(async () => { await api(`/api/projects/${projectId}/movie/assemble`, { method: "POST" }); setWasAssembling(true); }, "Assembling your movie. This doesn't use any video generations.")}>
-              <Film className="h-4 w-4" aria-hidden />{m.movie ? "Assemble again" : "Assemble Movie"}</button></div>)}
+            <div className="mt-3 space-y-3">
+              {hasNarration && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={withNarration} onChange={(e) => setWithNarration(e.target.checked)} /> Include scene narration</label>}
+              {!!music.data?.length && <SelectField label="Soundtrack (optional)" value={musicId} onChange={(e) => setMusicId(e.target.value)}>
+                <option value="">No soundtrack</option>{music.data.map((a) => <option key={a.id} value={a.id}>{a.title} (v{a.version})</option>)}</SelectField>}
+              <button className="btn-primary" disabled={!m.can_assemble || busy}
+                onClick={() => act(async () => { await api(`/api/projects/${projectId}/movie/assemble`, { method: "POST", json: { narration: withNarration, music_asset_id: musicId || null } }); setWasAssembling(true); }, "Assembling your movie. This doesn't use any video generations.")}>
+                <Film className="h-4 w-4" aria-hidden />{m.movie ? "Assemble again" : "Assemble Movie"}</button></div>)}
         </section>)}
 
       {m?.movie && (
         <section className="card p-5" aria-label="Final movie">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h3 className="text-base font-semibold">Your movie is ready</h3>
             <button className="btn-secondary" onClick={() => void downloadAsset(m.movie!.id).catch((e) => setMsg({ kind: "error", text: errorMessage(e) }))}><Download className="h-4 w-4" aria-hidden />Download</button></div>
-          <div className="max-w-3xl"><VideoPlayer assetId={m.movie.id} thumbnail={m.movie.thumbnail_url} title={m.movie.title} /></div>
+          <div className="max-w-3xl"><VideoPlayer assetId={m.movie.id} thumbnail={m.movie.thumbnail_url} title={m.movie.title} eager /></div>
           {m.movie.duration_seconds != null && <p className="mt-2 text-xs text-muted">{Math.round(m.movie.duration_seconds)} seconds · version {m.movie.version}</p>}
         </section>)}
 

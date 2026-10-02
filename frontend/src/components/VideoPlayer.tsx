@@ -1,5 +1,5 @@
 import { Play } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { errorMessage, streamUrl } from "../lib/api";
 import { AuthImage } from "./ui/AuthImage";
 import { Spinner } from "./ui/feedback";
@@ -7,7 +7,7 @@ import { Spinner } from "./ui/feedback";
 /** Lazy video: shows the thumbnail and only requests the (signed) stream URL when the user presses play. The native <video> element
  *  streams with HTTP Range requests, so seeking works without downloading the whole file, and it brings play, pause, seek, volume
  *  and fullscreen controls. */
-export function VideoPlayer({ assetId, thumbnail, title }: { assetId: string; thumbnail: string | null; title: string }) {
+export function VideoPlayer({ assetId, thumbnail, title, eager = false }: { assetId: string; thumbnail: string | null; title: string; eager?: boolean }) {
   const [src, setSrc] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -17,8 +17,11 @@ export function VideoPlayer({ assetId, thumbnail, title }: { assetId: string; th
     try { setSrc(await streamUrl("asset", assetId)); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   };
 
+  // eager: a just-finished generation shows the playable video straight away (it does not start by itself); lists keep the lazy thumbnail.
+  useEffect(() => { if (eager) void load(); }, [assetId, eager]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   if (src) {
-    return <video controls autoPlay playsInline preload="metadata" src={src} aria-label={title} className="aspect-video max-h-[70vh] w-full rounded-lg bg-black"
+    return <video controls autoPlay={!eager} playsInline preload="metadata" src={src} aria-label={title} className="aspect-video max-h-[70vh] w-full rounded-lg bg-black"
       onError={() => { setSrc(null); setError("The video link expired. Press play to reload it."); }} />;
   }
   return (

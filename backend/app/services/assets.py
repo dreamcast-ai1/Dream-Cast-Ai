@@ -87,9 +87,9 @@ def create_from_result(db: Session, job: GenerationJob, result: ProviderResult) 
     if not asset.lineage_id:
         asset.lineage_id = asset.id
     db.commit()
-    if scene_id and asset_type == "VIDEO":
+    if scene_id and asset_type in ("VIDEO", "VOICE"):
         from . import scenes
-        scenes.attach_video(db, scene_id, asset)
+        (scenes.attach_video if asset_type == "VIDEO" else scenes.attach_narration)(db, scene_id, asset)
     return asset
 
 

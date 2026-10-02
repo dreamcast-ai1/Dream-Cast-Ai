@@ -73,7 +73,7 @@ export default function AssetDetail() {
   });
   const regenerate = () => act("regen", async () => {
     const r = await api<{ job_id: string }>(`/api/assets/${a.id}/regenerate`, { method: "POST" });
-    setMsg({ kind: "info", text: "Regeneration started. A new version will be added when it's done; this version is kept." }); void r;
+    nav(`/history/${r.job_id}`);          // the generation page shows progress and then the new result by itself
   });
   const duplicate = () => act("dup", async () => { const c = await api<Detail>(`/api/assets/${a.id}/duplicate`, { method: "POST" }); nav(`/projects/${projectId}/assets/${c.id}`); });
   const remove = () => act("delete", async () => { await api(`/api/assets/${a.id}`, { method: "DELETE" }); nav(`/projects/${projectId}?tab=${({ VIDEO: "videos", IMAGE: "images" } as Record<string, string>)[a.type] ?? a.type.toLowerCase()}`, { replace: true }); });

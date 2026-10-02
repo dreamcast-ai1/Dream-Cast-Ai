@@ -1,15 +1,13 @@
-import { ArrowLeft, Download, Pencil, RefreshCw, Trash2, XCircle } from "lucide-react";
+import { ArrowLeft, Pencil, RefreshCw, Trash2, XCircle } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { GenerationResult } from "../components/GenerationResult";
 import { JobStatus } from "../components/JobStatus";
-import { AuthImage } from "../components/ui/AuthImage";
-import { AuthMedia } from "../components/ui/AuthMedia";
-import { VideoPlayer } from "../components/VideoPlayer";
 import { ConfirmDialog } from "../components/ui/Modal";
 import { Alert, ErrorState, PageLoader, StatusBadge } from "../components/ui/feedback";
 import { useAsync } from "../hooks/useAsync";
 import { usePolling } from "../hooks/usePolling";
-import { api, downloadAsset, downloadFile, errorMessage } from "../lib/api";
+import { api, errorMessage } from "../lib/api";
 import { formatDate, timeAgo, titleCase } from "../lib/format";
 import { EMOJI, LABEL } from "../lib/generatorMeta";
 import { ACTIVE_STATUSES, type Job } from "../lib/types";
@@ -62,16 +60,7 @@ export default function JobDetail() {
         <section className="card p-5" aria-label="Status"><JobStatus job={job} title="Progress" type={job.type} />
           {job.status === "COMPLETED" && <p className="mt-3 text-sm text-success">Your {job.type === "movie" ? "movie is ready." : `${LABEL[job.type]?.toLowerCase()} generation is complete.`}</p>}</section>
 
-        {(text || file) && (
-          <section className="card p-5" aria-label="Result"><h2 className="mb-3 text-lg font-semibold">Result</h2>
-            {job.simulated && <div className="mb-3"><Alert kind="info">This is simulated output from the development simulator — no real content was generated.</Alert></div>}
-            {file && (job.type === "video" || job.type === "movie" ? <VideoPlayer assetId={file.id} thumbnail={file.thumbnail_url} title="Generated video" /> : job.type === "music" || job.type === "voice" ? <AuthMedia src={file.url!} kind="audio" label="Generated audio" /> : <AuthImage src={file.url} alt="Generated result" className="w-full rounded-lg" />)}
-            {text && <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-raised p-3 font-sans text-sm">{text}</pre>}
-            <div className="mt-3 flex flex-wrap gap-2">
-              {file && <button className="btn-secondary" onClick={() => (job.type === "video" || job.type === "movie" || job.type === "face_replacement" ? downloadAsset(file.id) : downloadFile(`/api/assets/${file.id}/download`, `${job.type}-${job.id.slice(0, 8)}`))}><Download className="h-4 w-4" aria-hidden /> Download</button>}
-              {job.project_id && job.assets[0] && <Link className="btn-primary" to={`/projects/${job.project_id}/assets/${job.assets[0].id}`}>Open {LABEL[job.type]?.toLowerCase()}{job.type !== "video" ? " (view, edit, download)" : ""}</Link>}
-              {job.project_id && <Link className="btn-secondary" to={`/projects/${job.project_id}`}>Open project</Link>}
-            </div></section>)}
+        {job.status === "COMPLETED" && (text || file) && <div className="card p-5"><GenerationResult key={job.id} job={job} onRegenerate={regenerate} regenerating={busy === "regen"} /></div>}
 
         <section className="card p-5" aria-label="Prompts"><h2 className="mb-3 text-lg font-semibold">Prompts</h2>
           <h3 className="font-sans text-xs font-semibold uppercase tracking-wider text-muted">Original</h3><p className="mb-4 mt-1 whitespace-pre-wrap text-sm">{job.original_prompt || "—"}</p>
