@@ -97,6 +97,10 @@ class Settings(BaseSettings):
     text_rate_limit_per_minute: int = 8    # Story / Story-to-Script requests per IP per minute (0 disables); daily allowances use the story/script usage limits
     # Gemini "thinking" models spend part of max_tokens on hidden reasoning. "low" keeps that small. Empty = "low" for Gemini, nothing for other providers.
     llm_reasoning_effort: str = ""
+    # Transient provider failures (HTTP 429/500/502/503/504, timeouts, dropped connections) are retried inside ONE request with exponential backoff
+    # (about 1 s, then 2 s). Retries never cost the user extra allowance. Total attempts per call; 1 turns retrying off. Base delay 0 = no waiting (tests).
+    llm_max_attempts: int = 3
+    llm_retry_base_seconds: float = 1.0
 
     # Text generation (story / script / lyrics) reuses the LLM settings above.
     llm_generation_timeout_seconds: float = 120.0

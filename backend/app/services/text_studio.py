@@ -16,7 +16,7 @@ from ..errors import AppError
 from ..generators import BY_ID
 from ..models import GenerationJob, User
 from ..providers import ErrorCode, ProviderError, ProviderResult
-from ..providers.text import PromptRefinementProvider
+from ..providers.text import PromptRefinementProvider, unavailable_reason
 from ..providers.text_formats import LANGUAGE_NOTES, SCRIPT_FORMATS, STUDIO_STORY_WORDS, build_script_json, build_story_json
 from ..textparse import word_count
 from . import assets, generation, usage
@@ -60,8 +60,13 @@ def provider_error(e: ProviderError) -> AppError:
     if e.code == ErrorCode.PROVIDER_UNAVAILABLE:
         if detail.startswith("timeout"):
             return AppError("The text provider took too long to answer. Please try again, or use a shorter request.", 504, "text_provider_timeout")
-        return AppError("The text provider is temporarily unavailable. Please try again in a few minutes.", 503, "text_provider_unavailable")
+        if detail.startswith("network"):
+            return AppError("The text provider could not be reached right now. Please try again in a minute.", 503, "text_provider_unreachable")
+        return AppError("The text provider (Gemini) is temporarily overloaded or unavailable on Google's side. DreamCast already retried automatically; "
+                        "please try again in a minute.", 503, "text_provider_unavailable")
     if e.code == ErrorCode.INVALID_REQUEST:
+        if "model not found" in detail:
+            return AppError("The text model isn't available. An administrator needs to check LLM_MODEL.", 502, "text_model_unavailable")
         return AppError("The text provider couldn't process this request. Try shorter or different text.", 502, "text_provider_rejected")
     return AppError("The text provider returned an unusable answer. Please try again.", 502, "text_provider_bad_response")
 

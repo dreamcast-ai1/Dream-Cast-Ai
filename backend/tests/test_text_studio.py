@@ -200,12 +200,12 @@ def test_missing_credentials_give_a_clear_error_and_leak_nothing(client, make_us
 
 @pytest.mark.parametrize("reply,status,code,fragment", [
     (httpx.ReadTimeout("timed out"), 504, "text_provider_timeout", "took too long"),
-    (httpx.ConnectError("refused"), 503, "text_provider_unavailable", "temporarily unavailable"),
+    (httpx.ConnectError("refused"), 503, "text_provider_unreachable", "could not be reached"),
     (httpx.Response(429, json={"error": {"message": "quota"}}), 429, "text_provider_rate_limited", "rate-limiting"),
     (httpx.Response(401, json={"error": {"message": "API key not valid"}}), 502, "text_provider_auth", "rejected its API key"),
     (httpx.Response(403, json={"error": {"message": "forbidden"}}), 502, "text_provider_auth", "rejected its API key"),
-    (httpx.Response(500, text="boom"), 503, "text_provider_unavailable", "temporarily unavailable"),
-    (httpx.Response(503, text="overloaded"), 503, "text_provider_unavailable", "temporarily unavailable"),
+    (httpx.Response(500, text="RAWBODY boom"), 503, "text_provider_unavailable", "overloaded or unavailable"),
+    (httpx.Response(503, text="RAWBODY overloaded"), 503, "text_provider_unavailable", "overloaded or unavailable"),
     (httpx.Response(400, json={"error": {"message": "blocked"}}), 502, "text_provider_rejected", "couldn't process"),
     (httpx.Response(200, text="<html>not json</html>"), 502, "text_provider_bad_response", "unusable answer"),
     (httpx.Response(200, json={"unexpected": True}), 502, "text_provider_bad_response", "unusable answer"),
@@ -218,7 +218,7 @@ def test_provider_failures_map_to_safe_messages_and_refund(client, make_user, ge
     for call in (story, script):
         r = call(client, h)
         assert r.status_code == status and r.json()["error"]["code"] == code and fragment in r.json()["error"]["message"], r.text
-        assert KEY not in r.text and "Traceback" not in r.text and "API key not valid" not in r.text and "overloaded" not in r.text
+        assert KEY not in r.text and "Traceback" not in r.text and "API key not valid" not in r.text and "RAWBODY" not in r.text
     assert used(client, h, "story") == 0 and used(client, h, "script") == 0            # failures are refunded
     assert KEY not in "\n".join(rec.getMessage() for rec in caplog.records if not rec.name.startswith(("httpx", "asyncio")))
 

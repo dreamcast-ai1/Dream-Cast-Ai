@@ -112,7 +112,8 @@ def test_text_provider_outage_retries_once_then_reports_useful_error(client, mak
     run_all()
     j = client.get(f"/api/jobs/{r.json()['job_id']}", headers=h).json()
     assert j["status"] == "FAILED" and j["attempts"] == 2 and j["error_code"] == "PROVIDER_UNAVAILABLE"
-    assert j["error_message"] == "Story generation failed because the text provider is unavailable."
+    assert j["error_message"] == ("Story generation failed because the text provider is temporarily overloaded or unavailable. "
+                                  "DreamCast already retried automatically; please try again in a minute.")
 
 
 def test_text_provider_bad_key_is_not_retried(client, make_user, monkeypatch):

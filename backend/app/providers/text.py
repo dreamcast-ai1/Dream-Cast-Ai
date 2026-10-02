@@ -1,5 +1,7 @@
 """Text/LLM provider used for prompt refinement. One class covers every OpenAI-compatible chat API."""
 import logging
+import random
+import time
 from abc import abstractmethod
 
 import httpx
@@ -40,6 +42,20 @@ class TextProvider(Provider):
 
     def cancel(self, external_id):  # pragma: no cover
         return False
+
+
+RETRYABLE_STATUS = (429, 500, 502, 503, 504)       # Google: retry these with exponential backoff; never retry 400/401/403/404
+_sleep = time.sleep                                  # separate name so tests can replace it
+
+
+def unavailable_reason(detail: str) -> str:
+    """Plain words for why the provider could not be used, from the ProviderError detail (so an overload is not confused with a timeout or a bad key)."""
+    d = (detail or "").lower()
+    if d.startswith("timeout"):
+        return "took too long to answer"
+    if d.startswith("network"):
+        return "could not be reached"
+    return "is temporarily overloaded or unavailable"
 
 
 def http_client(timeout: float) -> httpx.Client:
@@ -93,6 +109,55 @@ class PromptRefinementProvider(TextProvider):
         """Gemini models think by default and thinking tokens share the max_tokens budget, so long output could be cut short. Ask for little thinking."""
         return self.s.llm_reasoning_effort or ("low" if self.s.llm_provider == "gemini" else "")
 
+    def _post_with_retries(self, body: dict, headers: dict, timeout: float, max_tokens: int, has_extras: bool) -> httpx.Response:
+        """One logical request = up to llm_max_attempts HTTP calls. Only transient failures are retried; the final transient failure is raised with a precise
+        detail ("HTTP 503 (after 3 attempts)", "timeout ...", "network error: ...") so callers can word it correctly. A 400 caused by an optional setting
+        (reasoning_effort / response_format) is handled inside the attempt by resending once without them; that is not counted as a retry."""
+        s = self.s
+        attempts, base = max(1, s.llm_max_attempts), max(0.0, s.llm_retry_base_seconds)
+        started, budget = time.monotonic(), timeout * 1.5          # overall cap: retries never turn into a hang
+        failure: ProviderError | None = None
+        res: httpx.Response | None = None
+        made = 0                                                   # HTTP attempts actually made
+        for attempt in range(1, attempts + 1):
+            remaining = budget - (time.monotonic() - started)
+            if attempt > 1 and remaining < 3:
+                break
+            retry_after = 0.0
+            made += 1
+            try:
+                with http_client(min(timeout, max(remaining, 3.0))) as client:
+                    res = client.post(f"{self.base_url}/chat/completions", json=body, headers=headers)
+                    if res.status_code == 400 and has_extras:
+                        for extra in ("reasoning_effort", "response_format"):
+                            body.pop(extra, None)
+                        body["max_tokens"] = max_tokens
+                        has_extras = False
+                        res = client.post(f"{self.base_url}/chat/completions", json=body, headers=headers)
+            except httpx.TimeoutException as e:
+                failure, res = ProviderError(ErrorCode.PROVIDER_UNAVAILABLE, f"timeout: {type(e).__name__}", transient=True), None
+            except httpx.HTTPError as e:
+                failure, res = ProviderError(ErrorCode.PROVIDER_UNAVAILABLE, f"network error: {type(e).__name__}", transient=True), None
+            else:
+                if res.status_code not in RETRYABLE_STATUS:
+                    return res                                     # success, or a non-transient answer the caller handles
+                code = ErrorCode.RATE_LIMITED if res.status_code == 429 else ErrorCode.PROVIDER_UNAVAILABLE
+                failure = ProviderError(code, f"HTTP {res.status_code}", transient=True)
+                try:
+                    retry_after = float(res.headers.get("retry-after", 0))
+                except ValueError:
+                    retry_after = 0.0
+            if attempt < attempts and base > 0:
+                delay = max(base * 2 ** (attempt - 1) * random.uniform(0.8, 1.2), min(retry_after, 8.0))       # ~1 s, ~2 s ...
+                log.warning("LLM transient failure (%s), attempt %s of %s; retrying in %.1fs", failure.detail, attempt, attempts, delay)
+                _sleep(delay)
+            elif attempt < attempts:
+                log.warning("LLM transient failure (%s), attempt %s of %s; retrying", failure.detail, attempt, attempts)
+        assert failure is not None
+        if made > 1:
+            failure.detail = f"{failure.detail} (after {made} attempts)"
+        raise failure
+
     def complete(self, system: str, user: str, max_tokens: int = 400, temperature: float = 0.4, timeout: float | None = None, json_mode: bool = False) -> str:
         if not self.is_configured():
             raise ProviderError(ErrorCode.API_NOT_CONFIGURED, "; ".join(self.validate_config()))
@@ -106,24 +171,12 @@ class PromptRefinementProvider(TextProvider):
             body["reasoning_effort"] = effort
         if json_mode:
             body["response_format"] = {"type": "json_object"}
-        try:
-            with http_client(timeout or self.s.llm_timeout_seconds) as client:
-                res = client.post(f"{self.base_url}/chat/completions", json=body, headers=headers)
-                if res.status_code == 400 and (effort or json_mode):     # a model that rejects one of these optional settings: retry once without them
-                    for extra in ("reasoning_effort", "response_format"):
-                        body.pop(extra, None)
-                    body["max_tokens"] = max_tokens
-                    res = client.post(f"{self.base_url}/chat/completions", json=body, headers=headers)
-        except httpx.TimeoutException as e:
-            raise ProviderError(ErrorCode.PROVIDER_UNAVAILABLE, f"timeout: {e}", transient=True)
-        except httpx.HTTPError as e:
-            raise ProviderError(ErrorCode.PROVIDER_UNAVAILABLE, f"network error: {type(e).__name__}", transient=True)
+        res = self._post_with_retries(body, headers, timeout or self.s.llm_timeout_seconds, max_tokens, bool(effort or json_mode))
         if res.status_code in (401, 403):
             raise ProviderError(ErrorCode.AUTHENTICATION_ERROR, f"HTTP {res.status_code}")
-        if res.status_code == 429:
-            raise ProviderError(ErrorCode.RATE_LIMITED, "HTTP 429", transient=True)
-        if res.status_code >= 500:
-            raise ProviderError(ErrorCode.PROVIDER_UNAVAILABLE, f"HTTP {res.status_code}", transient=True)
+        if res.status_code == 404:                       # Google answers 404 for a model name it doesn't know (or has retired)
+            raise ProviderError(ErrorCode.INVALID_REQUEST, "HTTP 404 (model not found)",
+                                message="The text model isn't available. An administrator needs to check LLM_MODEL.")
         if res.status_code >= 400:
             log.warning("LLM rejected request: HTTP %s %s", res.status_code, res.text[:300])
             raise ProviderError(ErrorCode.INVALID_REQUEST, f"HTTP {res.status_code}")

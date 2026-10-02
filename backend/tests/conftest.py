@@ -15,6 +15,7 @@ os.environ.update({
     "OTP_RESEND_SECONDS": "0",
     "REFINE_RATE_LIMIT_PER_MINUTE": "0",
     "TEXT_RATE_LIMIT_PER_MINUTE": "0",
+    "LLM_RETRY_BASE_SECONDS": "0",          # transient-failure retries run instantly in tests (no real waiting)
     "WORKER_ENABLED": "false",          # tests drive the runner directly (deterministic, no threads)
     "ENABLE_DEV_SIMULATOR": "true",
     "DEV_SIMULATOR_STEP_SECONDS": "0",

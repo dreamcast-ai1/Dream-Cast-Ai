@@ -460,6 +460,11 @@ answer gets one more try inside the same allowance unit).
 2026-06-01, so do not set that model. Gemini is used only for prompt refinement, Story and Story to Script. Without a key the Write page says the text provider is not configured and the
 rest of the app keeps working. Groq still works: `LLM_PROVIDER=groq`.
 
+**Temporary Gemini outages (HTTP 503 "overloaded", 429, 500/502/504, timeouts).** Every text call (refinement, Write page, Create → Story/Script) retries these inside the
+*same* request: up to `LLM_MAX_ATTEMPTS=3` tries with backoff of about 1 s then 2 s (`LLM_RETRY_BASE_SECONDS=1`; `Retry-After` is honoured, total time is capped). Retries never
+cost extra allowance: one Story/Script request is one unit. 400/401/403/404 are never retried. If Gemini stays overloaded the user is told it is a temporary outage on Google's
+side (not a bad key, rate limit or malformed answer); setting `LLM_MODEL` to another stable Flash model in Render is the quickest mitigation.
+
 ## Images and the Library
 
 **Image generation** (Create → Image) uses fal.ai text-to-image (default `fal-ai/flux/schnell`, the cheapest model) behind the same provider

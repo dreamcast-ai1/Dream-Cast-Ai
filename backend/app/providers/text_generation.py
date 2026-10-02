@@ -2,7 +2,7 @@
 from ..config import get_settings
 from ..textparse import clean_generated, parse_title
 from .base import ErrorCode, GenerationRequest, ProviderCapability, ProviderError, ProviderResult, SyncProvider
-from .text import PromptRefinementProvider
+from .text import PromptRefinementProvider, unavailable_reason
 from .text_formats import BUILDERS
 
 
@@ -39,11 +39,14 @@ class TextGenerationProvider(SyncProvider):
                                      timeout=s.llm_generation_timeout_seconds)
         except ProviderError as e:
             label = request.generator_type
-            msgs = {ErrorCode.PROVIDER_UNAVAILABLE: f"{label.capitalize()} generation failed because the text provider is unavailable.",
+            msgs = {ErrorCode.PROVIDER_UNAVAILABLE: f"{label.capitalize()} generation failed because the text provider {unavailable_reason(e.detail)}. "
+                                                    f"DreamCast already retried automatically; please try again in a minute.",
                     ErrorCode.RATE_LIMITED: f"{label.capitalize()} generation failed because the text provider is rate-limiting requests. Try again shortly.",
                     ErrorCode.AUTHENTICATION_ERROR: "The text provider rejected its API key. An administrator needs to check LLM_API_KEY."}
             if e.code in msgs:
                 raise ProviderError(e.code, e.detail, e.transient, msgs[e.code])
+            if e.code == ErrorCode.UNKNOWN_ERROR and e.detail in ("unexpected response shape", "empty completion"):
+                raise ProviderError(e.code, e.detail, e.transient, "The text provider returned an unusable answer. Please try again.")
             raise
         text = clean_generated(raw)
         if len(text) < 20:
