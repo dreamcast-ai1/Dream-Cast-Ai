@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { JobList } from "../components/JobList";
 import { EmptyState, ErrorState, PageHeader, PageLoader, Spinner } from "../components/ui/feedback";
+import { useFeatures } from "../context/FeaturesContext";
 import { usePolling } from "../hooks/usePolling";
 import { api, errorMessage } from "../lib/api";
 import { GEN_FILTERS } from "../lib/generatorMeta";
@@ -11,6 +12,8 @@ import { ACTIVE_STATUSES, type Job } from "../lib/types";
 const PAGE = 20;
 
 export default function History() {
+  const { isGeneratorEnabled } = useFeatures();
+  const filters = GEN_FILTERS.filter((f) => !f.types || f.types.split(",").some(isGeneratorEnabled));      // no filter for a feature that is unavailable
   const [filter, setFilter] = useState("all");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,7 +42,7 @@ export default function History() {
       <PageHeader title="Recent generations" subtitle="Everything you've created, newest first."
         actions={<Link to="/create" className="btn-primary"><Sparkles className="h-4 w-4" aria-hidden /> Create</Link>} />
       <div role="group" aria-label="Filter by type" className="mb-4 flex flex-wrap gap-1.5">
-        {GEN_FILTERS.map((f) => (
+        {filters.map((f) => (
           <button key={f.id} aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}
             className={`rounded-full border px-3 py-1 text-sm font-medium ${filter === f.id ? "border-accent bg-accent/15" : "border-border text-muted hover:text-fg"}`}>{f.label}</button>))}
       </div>

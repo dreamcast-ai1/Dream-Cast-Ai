@@ -2,14 +2,17 @@ import { Clapperboard } from "lucide-react";
 import { Link, Navigate } from "react-router-dom";
 import { GoogleButton } from "../components/GoogleButton";
 import { useAuth } from "../context/AuthContext";
+import { useFeatures } from "../context/FeaturesContext";
 
-const FEATURES = [
-  ["🎬", "Video"], ["🎵", "Music"], ["🎤", "Voice"], ["✍️", "Lyrics"], ["📖", "Story"],
-  ["📝", "Script"], ["👤", "Face Replacement"], ["🧑", "AI Avatar"], ["💬", "Interactive Avatar"],
+// [emoji, label, generator id]: the id lets the page hide features that are unavailable right now
+const FEATURES: [string, string, string][] = [
+  ["🎬", "Video", "video"], ["🖼️", "Image", "image"], ["🎵", "Music", "music"], ["🎤", "Voice", "voice"], ["✍️", "Lyrics", "lyrics"], ["📖", "Story", "story"],
+  ["📝", "Script", "script"], ["👤", "Face Replacement", "face_replacement"], ["🧑", "AI Avatar", "ai_avatar"], ["💬", "Interactive Avatar", "interactive_avatar"],
 ];
 
 export default function Landing() {
   const { user, loading } = useAuth();
+  const { ready, isGeneratorEnabled } = useFeatures();
   if (!loading && user) return <Navigate to="/dashboard" replace />;
   return (
     <div className="min-h-full">
@@ -28,7 +31,7 @@ export default function Landing() {
           <Link to="/register" className="btn-secondary">Sign up with email</Link>
         </div>
         <ul className="mx-auto mt-16 grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-3">
-          {FEATURES.map(([e, l]) => (
+          {(ready ? FEATURES.filter(([, , id]) => isGeneratorEnabled(id)) : []).map(([e, l]) => (
             <li key={l} className="card flex items-center gap-2 px-3 py-3 text-sm font-medium"><span aria-hidden>{e}</span>{l}</li>
           ))}
         </ul>

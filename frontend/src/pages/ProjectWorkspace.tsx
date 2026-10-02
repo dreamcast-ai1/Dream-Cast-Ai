@@ -5,6 +5,7 @@ import { ProjectFormModal } from "../components/ProjectFormModal";
 import { ConfirmDialog } from "../components/ui/Modal";
 import { Alert, ErrorState, PageLoader, StatusBadge } from "../components/ui/feedback";
 import { TabPanel, Tabs } from "../components/ui/Tabs";
+import { useFeatures } from "../context/FeaturesContext";
 import { useAsync } from "../hooks/useAsync";
 import { api, errorMessage } from "../lib/api";
 import { formatDate, timeAgo } from "../lib/format";
@@ -33,7 +34,10 @@ export default function ProjectWorkspace() {
   const { projectId } = useParams();
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
-  const tab = TAB_ORDER.includes(params.get("tab") ?? "") ? params.get("tab")! : "overview";
+  const { isAssetTypeEnabled } = useFeatures();
+  // Tabs of unavailable features (no provider configured) are hidden; a link to one falls back to the overview.
+  const visibleTabs = TAB_ORDER.filter((id) => { const s = SECTIONS.find((x) => x.id === id); return !s?.assetType || isAssetTypeEnabled(s.assetType); });
+  const tab = visibleTabs.includes(params.get("tab") ?? "") ? params.get("tab")! : "overview";
   const { data: project, setData, loading, error, reload } = useAsync(() => api<ProjectDetail>(`/api/projects/${projectId}`), [projectId]);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -51,7 +55,7 @@ export default function ProjectWorkspace() {
     try { await api(`/api/projects/${project.id}`, { method: "DELETE" }); nav("/projects", { replace: true }); }
     catch (e) { setErr(errorMessage(e)); setDeleting(false); } finally { setBusy(false); }
   };
-  const tabs = TAB_ORDER.map((id) => ({ id, label: id === "overview" ? "Overview" : id[0].toUpperCase() + id.slice(1), badge: project.counts[COUNT_KEY[id]] }));
+  const tabs = visibleTabs.map((id) => ({ id, label: id === "overview" ? "Overview" : id[0].toUpperCase() + id.slice(1), badge: project.counts[COUNT_KEY[id]] }));
 
   return (
     <div>

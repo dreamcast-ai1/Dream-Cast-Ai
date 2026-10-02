@@ -7,7 +7,7 @@ from ..db import get_db
 from ..deps import current_user
 from ..generators import GENERATORS, PROJECT_STATUSES, REFERENCE_TYPES
 from ..models import ReferenceAsset, User
-from ..services import provider_settings, subscriptions, usage
+from ..services import features as features_service, provider_settings, subscriptions, usage
 
 router = APIRouter(prefix="/api", tags=["meta"])
 
@@ -21,6 +21,13 @@ def health():
 def generators(_: User = Depends(current_user)):
     return [{"id": g.id, "label": g.label, "emoji": g.emoji, "description": g.description,
              "section": g.project_section, "available": False} for g in GENERATORS]
+
+
+@router.get("/features")
+def features(db: Session = Depends(get_db)):
+    """Which generators/asset types the UI should offer right now. Public (the landing page uses it too) and contains no secrets:
+    only true/false per feature."""
+    return features_service.availability(db)
 
 
 @router.get("/meta")

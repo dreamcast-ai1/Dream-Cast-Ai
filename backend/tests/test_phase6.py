@@ -124,7 +124,8 @@ def test_gitignore_keeps_media_and_secrets_out_but_the_storage_package_in():
         assert ignored(p), p
     for p in ("storage/.gitkeep", "backend/app/storage/local.py", ".env.example", "frontend/public/_redirects"):
         assert not ignored(p), p
-    assert git("ls-files", "backend/app/storage").stdout.split() == ["backend/app/storage/__init__.py", "backend/app/storage/base.py", "backend/app/storage/local.py"]
+    tracked_storage = git("ls-files", "backend/app/storage").stdout.split()           # the storage PACKAGE (code) must stay tracked; /storage/ (media) must not
+    assert {"backend/app/storage/__init__.py", "backend/app/storage/base.py", "backend/app/storage/local.py", "backend/app/storage/s3.py"} <= set(tracked_storage)
     assert git("ls-files", ".env").stdout.strip() == ""
     assert (REPO / "frontend/public/_redirects").read_text().split() == ["/*", "/index.html", "200"]
     tracked = git("ls-files").stdout.split()

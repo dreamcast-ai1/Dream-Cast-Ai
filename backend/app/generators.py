@@ -26,6 +26,10 @@ GENERATORS: list[Generator] = [
 ]
 
 GENERATOR_IDS = [g.id for g in GENERATORS]
+
+# Features that need their own paid AI provider. They are never removed: the UI simply hides them while no provider is configured
+# (services/features.py decides, from the provider credentials), and they reappear by themselves once credentials are set.
+OPTIONAL_GENERATORS = frozenset({"face_replacement", "ai_avatar", "interactive_avatar"})
 BY_ID = {g.id: g for g in GENERATORS}
 
 ASSET_TYPES = ["VIDEO", "IMAGE", "MUSIC", "VOICE", "LYRICS", "STORY", "SCRIPT", "FACE", "AVATAR"]

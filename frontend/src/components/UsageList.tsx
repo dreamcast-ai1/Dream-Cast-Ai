@@ -1,9 +1,11 @@
+import { useFeatures } from "../context/FeaturesContext";
 import type { UsageItem } from "../lib/types";
 
 export function UsageList({ items, compact }: { items: UsageItem[]; compact?: boolean }) {
+  const { isGeneratorEnabled } = useFeatures();
   return (
     <ul className={`grid gap-3 ${compact ? "" : "sm:grid-cols-2"}`}>
-      {items.map((u) => {
+      {items.filter((u) => isGeneratorEnabled(u.generator)).map((u) => {
         const pct = u.limit > 0 ? Math.min(100, (u.used / u.limit) * 100) : 100;
         const full = u.used >= u.limit;
         return (

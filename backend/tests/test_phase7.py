@@ -72,7 +72,7 @@ def test_production_never_points_links_at_localhost_and_never_runs_the_simulator
 
 
 # ------------------------------------------------------------------ every route is protected unless it is meant to be public
-PUBLIC = {("GET", "/api/auth/config"), ("GET", "/api/health"), ("GET", "/api/subscription/plans"), ("POST", "/api/auth/register"),
+PUBLIC = {("GET", "/api/features"), ("GET", "/api/auth/config"), ("GET", "/api/health"), ("GET", "/api/subscription/plans"), ("POST", "/api/auth/register"),
           ("POST", "/api/auth/login"), ("POST", "/api/auth/forgot-password"), ("POST", "/api/auth/reset-password"),
           ("POST", "/api/auth/verify-email"), ("POST", "/api/auth/resend-otp"), ("GET", "/api/auth/google/start"), ("GET", "/api/auth/google/callback"),
           ("POST", "/api/payments/razorpay/webhook")}

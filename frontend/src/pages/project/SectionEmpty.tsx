@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { AssetCard } from "../../components/AssetCard";
 import { EmptyState, ErrorState, PageLoader } from "../../components/ui/feedback";
+import { useFeatures } from "../../context/FeaturesContext";
 import { useAsync } from "../../hooks/useAsync";
 import { usePolling } from "../../hooks/usePolling";
 import { api } from "../../lib/api";
@@ -43,13 +44,15 @@ const FILTERS = [["ALL", "All", ""], ["VIDEO", "Video", "VIDEO"], ["IMAGE", "Ima
 
 /** Every asset in the project with basic type filtering. */
 export function AllAssets({ projectId }: { projectId: string }) {
+  const { isAssetTypeEnabled } = useFeatures();
+  const filters = FILTERS.filter((f) => !f[2] || isAssetTypeEnabled(f[2]));
   const [filter, setFilter] = useState<string>("ALL");
   const type = FILTERS.find((f) => f[0] === filter)?.[2] ?? "";
   const { data, loading, error, reload } = useAsync(() => api<Asset[]>(`/api/projects/${projectId}/assets${type ? `?type=${type}` : ""}`), [projectId, type]);
   return (
     <div className="space-y-4">
       <div role="group" aria-label="Filter assets" className="flex flex-wrap gap-1.5">
-        {FILTERS.map(([id, label]) => (
+        {filters.map(([id, label]) => (
           <button key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}
             className={`rounded-full border px-3 py-1 text-sm font-medium ${filter === id ? "border-accent bg-accent/15" : "border-border text-muted hover:text-fg"}`}>{label}</button>))}
       </div>

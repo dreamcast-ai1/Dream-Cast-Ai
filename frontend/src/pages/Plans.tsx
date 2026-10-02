@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Alert, ErrorState, PageHeader, PageLoader, Spinner } from "../components/ui/feedback";
 import { useAuth } from "../context/AuthContext";
+import { useFeatures } from "../context/FeaturesContext";
 import { useAsync } from "../hooks/useAsync";
 import { api, errorMessage } from "../lib/api";
 import { formatDate, formatPrice } from "../lib/format";
@@ -28,7 +29,8 @@ function loadCheckoutScript(): Promise<boolean> {
   });
 }
 
-function PlanCard({ plan, current, rank, currentRank, payments, busy, onUpgrade }: {
+function PlanCard({ plan, current, rank, currentRank, payments, busy, onUpgrade, faceOn }: {
+  faceOn: boolean;
   plan: PlanInfo; current: boolean; rank: number; currentRank: number; payments: boolean; busy: string | null; onUpgrade: (p: PlanInfo) => void;
 }) {
   const per = plan.usage_period === "month" ? "month" : "day";
@@ -49,7 +51,7 @@ function PlanCard({ plan, current, rank, currentRank, payments, busy, onUpgrade 
         <li className="flex gap-2">{check}Scene clips up to {plan.features.max_video_seconds} seconds</li>
         <li className="flex gap-2">{check}Assemble scenes into one movie</li>
         {plan.features.image_to_video && <li className="flex gap-2">{check}Start a scene from an image</li>}
-        {plan.features.face_replacement && <li className="flex gap-2">{check}Face replacement</li>}
+        {plan.features.face_replacement && faceOn && <li className="flex gap-2">{check}Face replacement</li>}
       </ul>
       <div className="mt-auto pt-6">
         {current ? <button className="btn-secondary w-full" disabled>Your current plan</button>
@@ -63,6 +65,7 @@ function PlanCard({ plan, current, rank, currentRank, payments, busy, onUpgrade 
 
 export default function Plans() {
   const { user } = useAuth();
+  const { isGeneratorEnabled } = useFeatures();
   const plans = useAsync(() => api<{ plans: PlanInfo[]; payments_enabled: boolean }>("/api/subscription/plans"));
   const sub = useAsync(() => api<CurrentSubscription>("/api/subscription/current"));
   const use = useAsync(() => api<{ period: string; items: UsageItem[] }>("/api/subscription/usage"));
@@ -121,7 +124,7 @@ export default function Plans() {
       {notice && <div className="mb-4" role="status"><Alert kind={notice.kind}>{notice.text}</Alert></div>}
       <ul className="grid gap-4 md:grid-cols-3">
         {list.map((p) => <PlanCard key={p.id} plan={p} current={p.id === cur.subscription.effective_plan_id} rank={rank(p.id)} currentRank={rank(cur.subscription.effective_plan_id)}
-          payments={plans.data!.payments_enabled} busy={busy} onUpgrade={upgrade} />)}
+          payments={plans.data!.payments_enabled} busy={busy} onUpgrade={upgrade} faceOn={isGeneratorEnabled("face_replacement")} />)}
       </ul>
     </div>
   );

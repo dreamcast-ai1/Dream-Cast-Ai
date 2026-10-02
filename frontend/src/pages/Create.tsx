@@ -11,6 +11,7 @@ import { VideoContextPicker } from "../components/create/VideoContextPicker";
 import { JobStatus } from "../components/JobStatus";
 import { SelectField } from "../components/ui/Field";
 import { Alert, ErrorState, PageHeader, PageLoader, Spinner } from "../components/ui/feedback";
+import { useFeatures } from "../context/FeaturesContext";
 import { useAsync } from "../hooks/useAsync";
 import { usePolling } from "../hooks/usePolling";
 import { api, errorMessage } from "../lib/api";
@@ -49,8 +50,10 @@ export default function Create() {
   const [notice, setNotice] = useState("");
   const [started, setStarted] = useState<Job | null>(null);
 
-  const generators = schema.data?.generators ?? [];
+  const { isGeneratorEnabled } = useFeatures();
+  const generators = (schema.data?.generators ?? []).filter((g) => isGeneratorEnabled(g.id));      // unavailable generators are not offered
   const selected = generators.find((g) => g.id === routeGen);
+  useEffect(() => { if (routeGen && !isGeneratorEnabled(routeGen)) nav("/create", { replace: true }); }, [routeGen, isGeneratorEnabled, nav]);   // a bookmarked link to a hidden generator lands on the picker
   const remaining = useMemo(() => usage.data?.items.find((u) => u.generator === selected?.id), [usage.data, selected]);
 
   // Reset when the generator changes, then apply hand-offs from other screens (e.g. "Generate Script" on a story).
