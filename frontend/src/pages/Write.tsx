@@ -178,10 +178,10 @@ function ScriptGenerator({ opts, projects, story, setStory }: { opts: TextOption
 export default function Write() {
   const { mode } = useParams();
   const nav = useNavigate();
-  const on = (g: string) => opts.data?.generators?.[g] !== false;        // an administrator can switch Story and Script off separately
-  const tab = mode === "script" ? (on("script") ? "script" : "story") : (on("story") ? "story" : "script");
   const opts = useAsync(() => api<TextOptions>("/api/text/options"));
   const projects = useAsync(() => api<Project[]>("/api/projects"));
+  const on = (g: string) => opts.data?.generators?.[g] !== false;        // an administrator can switch Story and Script off separately
+  const tab = mode === "script" ? (on("script") ? "script" : "story") : (on("story") ? "story" : "script");
   const [story, setStory] = useState("");
   if (opts.loading) return <PageLoader />;
   if (opts.error || !opts.data) return <ErrorState message={opts.error ?? "Couldn't load the writing tools."} onRetry={opts.reload} />;
