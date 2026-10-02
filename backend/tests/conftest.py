@@ -69,3 +69,10 @@ def all_features():
     from app.services import features
     with SessionLocal() as db:
         features.set_flags(db, {"face_swap": True, "ai_avatar": True, "interactive_avatar": True, "hindi": True, "telugu": True})
+
+
+@pytest.fixture
+def advanced_options(monkeypatch):
+    """Treats every caller as an administrator for the option mechanics tests (genre/mood/emotion/accent/gender...). Normal-user hiding has its own tests."""
+    from app.services import generation_defaults
+    monkeypatch.setattr(generation_defaults, "is_admin", lambda user: True)

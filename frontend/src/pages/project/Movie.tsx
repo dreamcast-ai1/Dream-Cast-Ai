@@ -44,7 +44,7 @@ function SceneForm({ projectId, scene, onClose, onSaved }: { projectId: string; 
         <TextArea label="Script" value={f.script} onChange={set("script")} maxLength={20000} />
         <SelectField label="Clip length" value={f.duration_seconds} onChange={set("duration_seconds")}>
           {["10", "20", "30"].map((d) => <option key={d} value={d}>{d} seconds</option>)}</SelectField>
-        <p className="-mt-2 text-xs text-muted">A single scene clip is at most 30 seconds. Your finished movie can be much longer.</p>
+        <p className="-mt-2 text-xs text-muted">A single scene clip is at most 15 seconds. Your finished movie can be much longer.</p>
         {chars.data && chars.data.length > 0 && (
           <fieldset><legend className="mb-1.5 text-sm font-medium">Characters in this scene</legend>
             <div className="flex flex-wrap gap-2">{chars.data.map((c) => (

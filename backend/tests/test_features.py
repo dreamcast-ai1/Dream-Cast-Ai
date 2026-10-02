@@ -127,7 +127,11 @@ def test_hindi_and_telugu_are_hidden_and_refused_until_enabled(client, make_user
     gens = {g["id"]: g for g in client.get("/api/generate/schema", headers=h).json()["generators"]}
     lang = next(f for f in gens["story"]["fields"] if f["key"] == "language")
     assert lang["choices"] == ["English"]
-    accent = next(f for f in gens["voice"]["fields"] if f["key"] == "accent")
+    voice_lang = next(f for f in gens["voice"]["fields"] if f["key"] == "language")
+    assert voice_lang["choices"] == ["English"]
+    assert "accent" not in {f["key"] for f in gens["voice"]["fields"]}                      # advanced: administrators only
+    agens = {g["id"]: g for g in client.get("/api/generate/schema", headers=ah).json()["generators"]}
+    accent = next(f for f in agens["voice"]["fields"] if f["key"] == "accent")
     assert "Hindi" not in accent["choices"] and "Telugu" not in accent["choices"]
     r = client.post("/api/generations", headers=h, json={"generator_type": "story", "original_prompt": "A story about a king", "refined_prompt": "A story about a king",
                                                          "options": {"language": "Hindi"}})
@@ -154,7 +158,9 @@ def test_without_an_llm_key_basic_refinement_is_used_and_labelled_honestly(clien
     d = refine(client, h)
     m = d["metadata"]
     assert m["method"] == "template" and m["label"] == "Basic refinement" and m["provider"] is None
-    assert d["refined_prompt"].startswith("Create a Drama story about: A lighthouse keeper") and "Length: Short" in d["refined_prompt"]
+    assert d["refined_prompt"].startswith("Create a story about: A lighthouse keeper") and "Length: Short" in d["refined_prompt"]     # genre is an administrator option: ignored here
+    ah, _ = make_user("boss@example.com")
+    assert refine(client, ah)["refined_prompt"].startswith("Create a Drama story about: A lighthouse keeper")
     assert "AI" not in m["label"]
 
 
@@ -225,7 +231,7 @@ def test_vocals_are_refused_clearly_when_the_provider_cannot_sing(client, make_u
 
 
 def test_voice_offers_both_genders_and_the_eight_emotions(client, make_user):
-    h, _ = make_user()
+    h, _ = make_user("boss@example.com")          # gender and emotion are administrator options
     voice = next(g for g in client.get("/api/generate/schema", headers=h).json()["generators"] if g["id"] == "voice")
     fields = {f["key"]: f for f in voice["fields"]}
     assert fields["gender"]["choices"] == ["Male", "Female"]

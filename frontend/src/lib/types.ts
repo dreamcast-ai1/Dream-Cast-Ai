@@ -25,7 +25,7 @@ export interface Job {
 }
 export const ACTIVE_STATUSES = ["QUEUED", "PROCESSING", "RETRYING"];
 
-export interface FieldDef { key: string; label: string; kind: "select" | "text" | "textarea" | "duration" | "asset"; choices: string[]; default: string | number | null; help: string; allow_custom: boolean; asset_types: string[] }
+export interface FieldDef { advanced?: boolean; key: string; label: string; kind: "select" | "text" | "textarea" | "duration" | "asset"; choices: string[]; default: string | number | null; help: string; allow_custom: boolean; asset_types: string[] }
 export interface GeneratorSchema extends Generator {
   fields: FieldDef[];
   prompt: { label: string; placeholder: string; required: boolean; max_length: number };
@@ -48,7 +48,7 @@ export interface CurrentSubscription {
   plan: PlanInfo; payments_enabled: boolean;
   subscription: { plan_id: string; effective_plan_id: string; status: string; started_at: string; expires_at: string | null; payment_provider: string | null };
 }
-export interface ProviderInfo { name: string; label: string; info: { model?: string; i2v_model?: string | null; durations?: number[]; aspect_ratios?: string[]; image_to_video?: boolean; key_configured?: boolean; languages?: string[] }; capability: string; generators: string[]; configured: boolean; problems: string[]; simulated: boolean; supports_cancel: boolean; enabled: boolean; daily_cap?: number | null; used_today?: number; provider_quota: string }
+export interface ProviderInfo { name: string; label: string; info: { model?: string; i2v_model?: string | null; durations?: number[]; aspect_ratios?: string[]; image_to_video?: boolean; key_configured?: boolean; languages?: string[]; credential?: string }; capability: string; generators: string[]; configured: boolean; problems: string[]; simulated: boolean; supports_cancel: boolean; enabled: boolean; daily_cap?: number | null; used_today?: number; provider_quota: string }
 export interface AdminUser extends User { generations: number; requests: number; plan_id: string; subscription_status: string; subscription_expires_at: string | null; used_today: number; payment_status: string | null }
 export interface AdminStats { total_users: number; active_users: number; total_generations: number; failed_generations: number; api_usage: number; by_generator: Record<string, number> }
 export interface CheckoutOrder { order_id: string; amount: number; currency: string; key_id: string; plan: { id: string; name: string }; user_email: string; user_name: string }

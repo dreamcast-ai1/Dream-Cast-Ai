@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from ..errors import AppError
 from ..generators import ASPECT_RATIOS
 
-MAX_DURATION_SECONDS = 30
-ALLOWED_DURATIONS = (10, 20, 30)
+MAX_DURATION_SECONDS = 15
+ALLOWED_DURATIONS = (5, 10, 15)          # the only lengths offered for video, music and (optionally) voice
 DEFAULT_DURATION = 10
 LANGUAGES = ["English", "Hindi", "Telugu"]
 GENRES = ["Action", "Adventure", "Comedy", "Drama", "Romance", "Thriller", "Horror", "Sci-Fi", "Fantasy", "Mystery", "Crime",
@@ -28,11 +28,12 @@ class Field:
     help: str = ""
     allow_custom: bool = False          # when choice == "Custom", "<key>_custom" text is kept
     asset_types: list[str] = field(default_factory=list)   # for kind == "asset": which project assets can be picked (keep last: positional order matters)
+    advanced: bool = False       # administrators only: hidden from normal users (their value comes from Admin -> Defaults)
 
     def to_dict(self):
         return {"key": self.key, "label": self.label, "kind": self.kind, "choices": self.choices,
                 "default": self.default, "help": self.help, "allow_custom": self.allow_custom,
-                "asset_types": self.asset_types}
+                "asset_types": self.asset_types, "advanced": self.advanced}
 
 
 @dataclass
@@ -56,9 +57,9 @@ class Spec:
 
 
 STYLE = Field("style", "Style", choices=["Cinematic", "Realistic", "Anime", "3D", "Cartoon", "Fantasy", "Horror", "Sci-Fi",
-                                         "Documentary", "Custom"], allow_custom=True)
+                                         "Documentary", "Custom"], allow_custom=True, advanced=True)
 MUSIC_GENRE = Field("genre", "Genre", choices=["Cinematic", "Pop", "Rock", "Classical", "Electronic", "Ambient", "Folk", "Lo-fi",
-                                               "Horror", "Fantasy", "Custom"], allow_custom=True)
+                                               "Horror", "Fantasy", "Custom"], allow_custom=True, advanced=True)
 STORY_LENGTH = Field("length", "Length", choices=["Short", "Medium", "Long", "Custom"], allow_custom=True,
                      help="Optional. Stories are outlines, so they stay short. Choose Custom to say what you want.")
 LANGUAGE = Field("language", "Language", choices=LANGUAGES, default="English")
@@ -66,7 +67,7 @@ LANGUAGE = Field("language", "Language", choices=LANGUAGES, default="English")
 SPECS: dict[str, Spec] = {
     "video": Spec(
         [Field("method", "Method", choices=["Text to Video", "Image to Video"], default="Text to Video"), STYLE,
-         Field("duration_seconds", "Duration", "duration", [str(d) for d in ALLOWED_DURATIONS], DEFAULT_DURATION, "Maximum 30 seconds"),
+         Field("duration_seconds", "Duration", "duration", [str(d) for d in ALLOWED_DURATIONS], DEFAULT_DURATION, "5, 10 or 15 seconds"),
          Field("aspect_ratio", "Aspect ratio", choices=list(ASPECT_RATIOS), default="16:9")],
         "What should happen in the video?", "e.g. A warrior walks through an ancient city at night while smoke moves through the streets",
         reference="optional", reference_label="Reference image", uses_characters=True, ui="video",
@@ -78,26 +79,28 @@ SPECS: dict[str, Spec] = {
     "music": Spec(
         [Field("vocals_mode", "Type", choices=["Instrumental", "Instrumental + Vocals"], default="Instrumental",
                help="Instrumental is the default. Vocals need a music provider that can sing; if yours can't, you'll be told instead of getting a fake result."),
-         MUSIC_GENRE, Field("mood", "Mood", choices=["Happy", "Sad", "Epic", "Romantic", "Suspense", "Peaceful", "Dark", "Energetic", "Emotional"]),
-         Field("duration_seconds", "Duration", "duration", [str(d) for d in ALLOWED_DURATIONS], DEFAULT_DURATION,
-               "Maximum 30 seconds"),
+         MUSIC_GENRE, Field("mood", "Mood", choices=["Happy", "Sad", "Epic", "Romantic", "Suspense", "Peaceful", "Dark", "Energetic", "Emotional"], advanced=True),
+         Field("duration_seconds", "Duration", "duration", [str(d) for d in ALLOWED_DURATIONS], DEFAULT_DURATION, "5, 10 or 15 seconds"),
          Field("lyrics_asset_id", "Reference lyrics", "asset", asset_types=["LYRICS"],
                help="Optional. Informs the mood and theme; sung only when vocals are requested and the provider supports them.")],
-        "Describe your music (optional if you pick a genre or mood)", "e.g. A dark cinematic battle theme with deep drums, rising strings and an intense final section",
+        "Describe your music", "e.g. A dark cinematic battle theme with deep drums, rising strings and an intense final section",
         prompt_required=False, note="Music is instrumental by default. Choose Instrumental + Vocals only if your music provider supports singing; lyrics you select inform the mood and, with a singing provider, are sung."),
     "voice": Spec(
-        [Field("gender", "Gender", choices=["Male", "Female"]),
-         Field("accent", "Accent", choices=["Indian English", "American", "British", "Hindi", "Telugu", "Other"]),
-         Field("emotion", "Emotion", choices=["Neutral", "Happy", "Sad", "Angry", "Excited", "Calm", "Fearful", "Serious"]),
-         Field("language", "Language", choices=LANGUAGES, help="Optional. Inferred from the accent if left empty.")],
+        [Field("gender", "Voice gender", choices=["Male", "Female"], advanced=True),
+         Field("accent", "Accent", choices=["Indian English", "American", "British", "Hindi", "Telugu", "Other"], advanced=True),
+         Field("emotion", "Emotion", choices=["Neutral", "Happy", "Sad", "Angry", "Excited", "Calm", "Fearful", "Serious"], advanced=True),
+         Field("language", "Language", choices=LANGUAGES, help="Optional. Inferred from the accent if left empty."),
+         Field("voice", "Voice name (provider specific)", "text", help="Optional. Overrides the gender/accent voice where the provider supports named voices (e.g. af_bella).", advanced=True),
+         Field("duration_seconds", "Spoken length", choices=[str(d) for d in ALLOWED_DURATIONS],
+               help="Optional. Short speech is padded with silence; long speech is sped up slightly. Speech is never cut off.")],
         "What should the voice say?", "Type the text to be spoken, e.g. Say this in a calm but emotional voice: The kingdom will rise again.",
         prompt_max=3000, note="Your text is spoken as written (no AI rewriting). Emotion and accent are matched to what the voice provider supports."),
     "lyrics": Spec([Field("language", "Language", choices=LANGUAGES, default="English")], "Describe the song or lyrics you want.",
                    "e.g. A hopeful song about leaving home to chase a dream"),
-    "story": Spec([Field("genre", "Genre", choices=GENRES, allow_custom=True), LANGUAGE, STORY_LENGTH],
+    "story": Spec([Field("genre", "Genre", choices=GENRES, allow_custom=True, advanced=True), LANGUAGE, STORY_LENGTH],
                   "What is your story about?", "e.g. A young engineer discovers a hidden city beneath Hyderabad and must escape before sunrise",
                   uses_characters=True),
-    "script": Spec([Field("genre", "Genre", choices=GENRES, allow_custom=True), LANGUAGE,
+    "script": Spec([Field("genre", "Genre", choices=GENRES, allow_custom=True, advanced=True), LANGUAGE,
                     Field("length", "Length", choices=["Short", "Medium", "Long"], help="Optional"),
                     Field("target_minutes", "Target duration", choices=["5 minutes", "10 minutes", "20 minutes", "30 minutes"],
                           help="Optional. How much screen time the script should cover."),
@@ -158,7 +161,7 @@ def _resolve_duration(label: str, explicit, prompt: str, warnings: list[str], st
         nearest = min(ALLOWED_DURATIONS, key=lambda a: (abs(a - requested), -a))
         if strict:
             raise AppError(f"Duration must be one of {', '.join(map(str, ALLOWED_DURATIONS))} seconds.", 422, "validation_error")
-        warnings.append(f"{label.capitalize()} duration adjusted to {nearest} seconds (allowed: 10, 20 or 30).")
+        warnings.append(f"{label.capitalize()} duration adjusted to {nearest} seconds (allowed: 5, 10 or 15).")
         return nearest
     return int(requested)
 
@@ -178,6 +181,8 @@ def normalize_options(generator: str, raw: dict | None, prompt: str, *, strict: 
             if f.default not in (None, "") and f.kind == "select":
                 clean[f.key] = f.default
             continue
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and f.kind == "select" and float(value).is_integer():
+            value = str(int(value))                          # a number for a numeric choice (e.g. a spoken length of 10) is fine
         if not isinstance(value, str):
             raise AppError(f"Invalid value for {f.label}.", 422, "validation_error")
         value = value.strip()
@@ -233,5 +238,14 @@ def validate_prompt(generator: str, prompt: str, options: dict) -> str:
     if spec.prompt_required and not optional_prompt and len(prompt) < 3:
         raise AppError("Please describe what you want to create.", 422, "validation_error")
     if generator == "music" and not prompt and not (options.get("genre") or options.get("mood")):
-        raise AppError("Describe your music or choose a genre or mood.", 422, "validation_error")
+        raise AppError("Describe the music you want.", 422, "validation_error")
     return prompt
+
+
+def advanced_keys(generator: str) -> set[str]:
+    """Option keys only administrators may set (their values come from Admin -> Defaults for everyone else)."""
+    keys: set[str] = set()
+    for f in SPECS[generator].fields:
+        if f.advanced:
+            keys |= {f.key, f"{f.key}_custom"}
+    return keys

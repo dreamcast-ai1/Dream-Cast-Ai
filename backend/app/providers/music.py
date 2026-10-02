@@ -8,7 +8,7 @@ from ..config import Settings, get_settings
 from .base import ErrorCode, GenerationRequest, ProviderCapability, ProviderError, ProviderResult, SyncProvider
 from .http_util import http_client, network_error, raise_for_provider_status
 
-DURATIONS = (10, 20, 30)
+DURATIONS = (5, 10, 15)
 AUDIO_EXT = {"audio/flac": (".flac", "audio/flac"), "audio/x-flac": (".flac", "audio/flac"), "audio/wav": (".wav", "audio/wav"),
              "audio/x-wav": (".wav", "audio/wav"), "audio/wave": (".wav", "audio/wav"), "audio/mpeg": (".mp3", "audio/mpeg"),
              "audio/mp3": (".mp3", "audio/mpeg"), "audio/ogg": (".ogg", "audio/ogg")}
@@ -85,7 +85,7 @@ class HuggingFaceMusicProvider(MusicProvider):
         return [d for d in DURATIONS if d <= self.s.music_max_seconds] or [DURATIONS[0]]
 
     def info(self) -> dict:
-        return {"model": self.model, "durations": self.supported_durations(), "supports_lyrics": self.supports_lyrics, "supports_vocals": self.supports_lyrics}
+        return {"model": self.model, "credential": "MUSIC_API_KEY", "durations": self.supported_durations(), "supports_lyrics": self.supports_lyrics, "supports_vocals": self.supports_lyrics}
 
     def run(self, request: GenerationRequest) -> ProviderResult:
         if not self.is_configured():
@@ -109,8 +109,10 @@ class HuggingFaceMusicProvider(MusicProvider):
             raise ProviderError(ErrorCode.GENERATION_FAILED, f"unexpected content-type {ctype!r}", transient=True,
                                 message="The music provider didn't return audio. Please try again.")
         ext, mime = AUDIO_EXT[ctype]
-        return ProviderResult(file=(res.content, ext, mime), duration_seconds=float(duration), title=None,
-                              meta={"model": self.model, "requested_duration": duration, "bytes": len(res.content)})
+        from .. import media
+        data, ext, mime, seconds, notes = media.fit_audio_duration(res.content, ext, float(duration))      # MusicGen only approximates the length: make it exact
+        return ProviderResult(file=(data, ext, mime), duration_seconds=seconds or float(duration), title=None,
+                              meta={"model": self.model, "requested_duration": duration, "bytes": len(data), "notes": notes})
 
 
 def build_music_provider() -> MusicProvider:

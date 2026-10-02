@@ -10,7 +10,7 @@ import { AdminSupport } from "../support/AdminSupport";
 import type { AdminStats, AdminUser, FeatureItem, Job, ProviderInfo } from "../lib/types";
 
 const PLAN_CHOICES: [string, string][] = [["teaser", "Teaser"], ["trailer", "Trailer"], ["movie", "Movie"]];
-const TABS = [{ id: "overview", label: "Overview" }, { id: "features", label: "Features" }, { id: "users", label: "Users" }, { id: "limits", label: "Plans & limits" },
+const TABS = [{ id: "overview", label: "Overview" }, { id: "features", label: "Features" }, { id: "users", label: "Users" }, { id: "defaults", label: "Defaults" }, { id: "limits", label: "Plans & limits" },
   { id: "support", label: "Support" }, { id: "jobs", label: "Failed jobs" }, { id: "providers", label: "Providers" }, { id: "system", label: "System" }];
 
 interface SystemItem { id: string; label: string; ok: boolean; detail: string }
@@ -130,6 +130,45 @@ function Features() {
   );
 }
 
+interface DefaultField { key: string; label: string; kind: string; choices: string[]; advanced: boolean; default: string | number | null; configured: boolean }
+interface DefaultGroup { generator: string; fields: DefaultField[] }
+
+/** The options normal users never see, with the value every generation uses for them. Saved per generator; empty = the built-in default. */
+function Defaults() {
+  const { data, setData, loading, error, reload } = useAsync(() => api<{ generators: DefaultGroup[] }>("/api/admin/defaults"));
+  const [edits, setEdits] = useState<Record<string, Record<string, string>>>({});
+  const [msg, setMsg] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  if (loading && !data) return <PageLoader />;
+  if (error || !data) return <ErrorState message={error ?? "Could not load defaults."} onRetry={reload} />;
+  const value = (g: DefaultGroup, f: DefaultField) => edits[g.generator]?.[f.key] ?? (f.configured && f.default != null ? String(f.default) : "");
+  const save = async (g: DefaultGroup) => {
+    const values = Object.fromEntries(g.fields.map((f) => [f.key, value(g, f)]));
+    try { setData(await api<{ generators: DefaultGroup[] }>(`/api/admin/defaults/${g.generator}`, { method: "PUT", json: { values } })); setEdits((e) => ({ ...e, [g.generator]: {} })); setMsg({ kind: "success", text: `Saved defaults for ${g.generator}.` }); }
+    catch (e) { setMsg({ kind: "error", text: errorMessage(e) }); }
+  };
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted">Normal users only see the prompt, the basic options and the duration. Everything else (genre, mood, emotion, accent, voice...) is filled in from here. Leave a field empty to use the built-in default.</p>
+      {msg && <Alert kind={msg.kind}>{msg.text}</Alert>}
+      <ul className="grid gap-3 lg:grid-cols-2">{data.generators.map((g) => (
+        <li key={g.generator} className="card p-4">
+          <h3 className="text-base font-semibold capitalize">{g.generator}</h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">{g.fields.map((f) => {
+            const id = `def-${g.generator}-${f.key}`;
+            const set = (v: string) => setEdits((e) => ({ ...e, [g.generator]: { ...e[g.generator], [f.key]: v } }));
+            return (
+              <div key={f.key}><label htmlFor={id} className="mb-1 block text-xs font-medium">{f.label}{f.advanced ? " (admin option)" : ""}</label>
+                {f.kind === "text" ? <input id={id} className="field" maxLength={60} value={value(g, f)} onChange={(e) => set(e.target.value)} placeholder="Provider default" />
+                  : <select id={id} className="field" value={value(g, f)} onChange={(e) => set(e.target.value)}>
+                    <option value="">Built-in default</option>{f.choices.filter((c) => c !== "Custom").map((c) => <option key={c} value={c}>{f.key === "duration_seconds" ? `${c} seconds` : c}</option>)}</select>}
+              </div>);
+          })}</div>
+          <button className="btn-primary mt-4" onClick={() => void save(g)}>Save {g.generator} defaults</button>
+        </li>))}</ul>
+    </div>
+  );
+}
+
 function Limits() {
   const [plan, setPlan] = useState("teaser");
   const { data, loading, error, reload } = useAsync(() => api<{ plan: string; plans: { id: string; name: string }[]; items: { generator: string; label: string; emoji: string; limit: number }[] }>(`/api/admin/limits?plan=${plan}`), [plan]);
@@ -192,7 +231,7 @@ function Providers() {
             <div><p className="font-medium">{p.label} <span className="text-muted">· {p.name}</span>{p.simulated && <span className="ml-2 rounded bg-warn/15 px-1.5 py-0.5 text-xs text-warn">simulator</span>}</p>
               <p className="text-xs text-muted">{[p.generators.length ? `Runs: ${p.generators.join(", ")}` : "Used for prompt refinement", p.info.model ? `Model: ${p.info.model}` : "", p.info.durations ? `Clips up to ${Math.max(...p.info.durations)} s` : "", p.info.languages ? `Languages: ${p.info.languages.join(", ")}` : ""].filter(Boolean).join(" · ")}</p>
               <p className={`mt-1 flex items-center gap-1.5 text-xs ${p.configured ? "text-success" : "text-warn"}`}><span aria-hidden className={`h-2 w-2 rounded-full ${p.configured ? "bg-success" : "bg-warn"}`} />{p.configured ? "Configured" : `Not configured — ${p.problems.join(" · ")}`}<span className="text-muted"> · {p.enabled ? "Enabled" : "Disabled"}</span></p>
-              <p className="text-xs text-muted">API key: {(p.info.key_configured ?? p.configured) ? "Configured" : "Not configured"} (never displayed){p.info.i2v_model ? ` · Image-to-video model: ${p.info.i2v_model}` : ""}{p.info.aspect_ratios ? ` · Formats: ${p.info.aspect_ratios.join(", ")}` : ""}</p></div>
+              <p className="text-xs text-muted">{p.info.credential ? `Credential: ${p.info.credential} · ` : ""}API key: {(p.info.key_configured ?? p.configured) ? "Configured" : "Not configured"} (never displayed){p.info.i2v_model ? ` · Image-to-video model: ${p.info.i2v_model}` : ""}{p.info.aspect_ratios ? ` · Formats: ${p.info.aspect_ratios.join(", ")}` : ""}</p></div>
             {p.generators.length > 0 && (
               <div className="flex flex-wrap items-end gap-3">
                 <button className={p.enabled ? "btn-secondary" : "btn-primary"} onClick={() => save(p.name, { enabled: !p.enabled })} aria-label={`${p.enabled ? "Disable" : "Enable"} ${p.name}`}>{p.enabled ? "Disable" : "Enable"}</button>
@@ -214,7 +253,7 @@ export default function Admin() {
     <div>
       <PageHeader title="Admin" subtitle="Manage features, users, plans and system health." />
       <Tabs label="Admin sections" tabs={TABS} active={tab} onChange={(id) => setParams({ tab: id }, { replace: true })} />
-      <TabPanel id={tab}>{tab === "overview" && <Overview />}{tab === "features" && <Features />}{tab === "users" && <Users />}{tab === "limits" && <Limits />}{tab === "support" && <AdminSupport />}{tab === "jobs" && <FailedJobs />}{tab === "providers" && <Providers />}{tab === "system" && <System />}</TabPanel>
+      <TabPanel id={tab}>{tab === "overview" && <Overview />}{tab === "features" && <Features />}{tab === "users" && <Users />}{tab === "defaults" && <Defaults />}{tab === "limits" && <Limits />}{tab === "support" && <AdminSupport />}{tab === "jobs" && <FailedJobs />}{tab === "providers" && <Providers />}{tab === "system" && <System />}</TabPanel>
     </div>
   );
 }

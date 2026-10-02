@@ -89,6 +89,9 @@ class PromptRefinementProvider(TextProvider):
     def needs_key(self) -> bool:
         return PRESETS.get(self.s.llm_provider, PRESETS["custom"])[2]
 
+    def info(self) -> dict:
+        return {"model": self.model, "credential": "LLM_API_KEY", "key_configured": bool(self.s.llm_api_key)}
+
     def validate_config(self) -> list[str]:
         problems = []
         if self.s.llm_provider not in PRESETS:

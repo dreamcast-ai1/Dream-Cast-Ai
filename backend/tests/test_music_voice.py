@@ -8,7 +8,7 @@ from app.providers.voice import GoogleTTSProvider
 
 from .helpers import (MP3, WAV, generate, generate_and_run, make_project, run_all, use_llm, use_music, use_voice, used)
 
-pytestmark = pytest.mark.usefixtures("all_features")
+pytestmark = pytest.mark.usefixtures("all_features", "advanced_options")
 
 
 def refine(client, h, gen, prompt="", **kw):
@@ -33,20 +33,20 @@ def test_music_configuration_options(client, make_user):
     f = {x["key"]: x for x in m["fields"]}
     assert f["genre"]["choices"] == ["Cinematic", "Pop", "Rock", "Classical", "Electronic", "Ambient", "Folk", "Lo-fi", "Horror", "Fantasy", "Custom"]
     assert f["mood"]["choices"] == ["Happy", "Sad", "Epic", "Romantic", "Suspense", "Peaceful", "Dark", "Energetic", "Emotional"]
-    assert f["duration_seconds"]["choices"] == ["10", "20", "30"]
+    assert f["duration_seconds"]["choices"] == ["5", "10", "15"]
     assert m["configured"] is False and "Music provider is not configured" in m["config_message"] and m["available"]
 
 
 def test_music_duration_follows_the_provider_and_is_never_exceeded(client, make_user, monkeypatch):
-    rec = use_music(monkeypatch, music_max_seconds=20)
+    rec = use_music(monkeypatch, music_max_seconds=10)
     h, _ = make_user()
     f = {x["key"]: x for x in schema(client, h)["music"]["fields"]}
-    assert f["duration_seconds"]["choices"] == ["10", "20"]
-    r = refine(client, h, "music", MUSIC_PROMPT, options={"duration_seconds": 30}).json()
-    assert r["metadata"]["options"]["duration_seconds"] == 20
-    assert any("up to 20 seconds" in w for w in r["metadata"]["warnings"])
-    bad = generate(client, h, "music", MUSIC_PROMPT, options={"duration_seconds": 30})
-    assert bad.status_code == 422 and "maximum 20" in bad.json()["error"]["message"]
+    assert f["duration_seconds"]["choices"] == ["5", "10"]
+    r = refine(client, h, "music", MUSIC_PROMPT, options={"duration_seconds": 15}).json()
+    assert r["metadata"]["options"]["duration_seconds"] == 10
+    assert any("up to 10 seconds" in w for w in r["metadata"]["warnings"])
+    bad = generate(client, h, "music", MUSIC_PROMPT, options={"duration_seconds": 15})
+    assert bad.status_code == 422 and "maximum 10" in bad.json()["error"]["message"]
     assert used(client, h, "music") == 0 and rec.requests == []
 
 

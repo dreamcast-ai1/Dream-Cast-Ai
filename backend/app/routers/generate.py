@@ -9,7 +9,7 @@ from ..models import User
 from ..providers import ProviderError
 from ..schemas import GenerationIn, GenerationOut, RefineIn
 from ..security import RateLimiter
-from ..services import features, generation, provider_settings, refinement, usage
+from ..services import features, generation, generation_defaults, provider_settings, refinement, usage
 from ..services.generation_schema import SPECS
 
 router = APIRouter(prefix="/api", tags=["generate"])
@@ -26,9 +26,14 @@ def schema(user: User = Depends(current_user), db: Session = Depends(get_db)):
         if not features.generator_enabled(db, g.id):
             continue                                    # switched off by an administrator: not offered at all
         spec = SPECS[g.id].to_dict()
-        for f in spec["fields"]:                        # Hindi/Telugu appear only while an administrator has enabled them
-            if f["key"] in ("language", "accent"):
+        admin = generation_defaults.is_admin(user)
+        defaults = generation_defaults.get_defaults(db, g.id)
+        spec["fields"] = [f for f in spec["fields"] if admin or not f["advanced"]]       # advanced options exist only for administrators
+        for f in spec["fields"]:
+            if f["key"] in ("language", "accent"):      # Hindi/Telugu appear only while an administrator has enabled them
                 f["choices"] = features.filter_languages(db, f["choices"])
+            if f["key"] in defaults:                   # the administrator's default is what the form starts with
+                f["default"] = defaults[f["key"]]
         available, reason, simulated, configured, config_message, info = True, None, False, True, None, {}
         try:
             p = provider_settings.select_provider(db, g.id, allow_unconfigured=True)

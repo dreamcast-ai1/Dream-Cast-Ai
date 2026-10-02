@@ -37,7 +37,7 @@ def patch_plan(monkeypatch, plan_id="teaser", **changes):
     monkeypatch.setitem(plans_module.PLANS, plan_id, dataclasses.replace(p, features=features, **changes))
 
 
-pytestmark = pytest.mark.usefixtures("all_features")
+pytestmark = pytest.mark.usefixtures("all_features", "advanced_options")
 
 
 # ------------------------------------------------------------------ plans and default subscription
@@ -66,7 +66,7 @@ def test_video_allowance_is_5_15_40_and_everything_else_scales_with_it(client):
         values = [ps[i]["limits"][gen] for i in order]
         assert values == [values[0], values[0] * 3, values[0] * 8], (gen, values)
     assert [ps[i]["price_minor"] for i in order] == [0, 19900, 49900] and ps["teaser"]["limits"]["story"] == 20
-    assert all(p["features"]["max_video_seconds"] <= 30 for p in ps.values())
+    assert all(p["features"]["max_video_seconds"] <= 15 for p in ps.values())
 
 
 def test_new_user_gets_teaser_plan_automatically(client, make_user):
@@ -102,7 +102,7 @@ def test_usage_and_entitlements_endpoints(client, make_user):
     assert u["plan_id"] == "teaser" and u["period"] == "month" and u["resets_at"] and (v["used"], v["limit"], v["remaining"]) == (1, 5, 4)
     assert {"story", "script", "music", "voice", "video", "face_replacement"} <= {i["generator"] for i in u["items"]}
     e = client.get("/api/subscription/entitlements", headers=h).json()
-    assert e["plan_id"] == "teaser" and e["features"]["max_video_seconds"] == 30 and e["limits"]["video"] == 5
+    assert e["plan_id"] == "teaser" and e["features"]["max_video_seconds"] == 15 and e["limits"]["video"] == 5
     legacy = client.get("/api/usage", headers=h).json()                  # the original endpoint keeps working
     assert legacy["period"] == "this month" and legacy["plan_name"] == "Teaser" and next(i for i in legacy["items"] if i["generator"] == "video")["remaining"] == 4
 
@@ -209,26 +209,26 @@ def test_admin_limits_are_per_plan_and_legacy_overrides_still_apply(client, make
 def test_plan_video_cap_is_enforced_on_refine_and_submit(client, make_user, monkeypatch):
     patch_plan(monkeypatch, features={"max_video_seconds": 10})
     h, _ = make_user()
-    body = {"generator_type": "video", "prompt": "A knight rides. Make it 20 seconds.", "options": {}}
+    body = {"generator_type": "video", "prompt": "A knight rides. Make it 15 seconds.", "options": {}}
     r = client.post("/api/generate/refine", headers=h, json=body).json()
     assert r["metadata"]["options"]["duration_seconds"] == 10 and any("Your plan allows videos up to 10 seconds" in w for w in r["metadata"]["warnings"])
-    bad = video(client, h, options={"duration_seconds": 20, "aspect_ratio": "16:9"})
+    bad = video(client, h, options={"duration_seconds": 15, "aspect_ratio": "16:9"})
     assert bad.status_code == 422 and "Your plan allows videos up to 10 seconds" in bad.json()["error"]["message"]
     assert video(client, h, options={"duration_seconds": 10, "aspect_ratio": "16:9"}).status_code == 201
 
 
-def test_no_plan_can_exceed_the_global_30_second_cap():
+def test_no_plan_can_exceed_the_global_15_second_cap():
     p = plans_module.Plan("x", "X", "", "", 0, "INR", "free", {}, {"max_video_seconds": 120})
-    assert p.features["max_video_seconds"] == 30
+    assert p.features["max_video_seconds"] == 15
     for plan in plans_module.PLANS.values():
-        assert plan.features["max_video_seconds"] <= 30
+        assert plan.features["max_video_seconds"] <= 15
 
 
 def test_sixty_and_hundred_second_requests_never_reach_a_provider(client, make_user):
     h, _ = make_user()
     for secs in (60, 100, 120):
         r = client.post("/api/generate/refine", headers=h, json={"generator_type": "video", "prompt": f"A knight rides. Make it {secs} seconds.", "options": {}}).json()
-        assert r["metadata"]["options"]["duration_seconds"] == 30
+        assert r["metadata"]["options"]["duration_seconds"] == 15
         assert video(client, h, options={"duration_seconds": secs}).status_code == 422
 
 

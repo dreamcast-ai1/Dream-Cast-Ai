@@ -14,7 +14,7 @@ from app.storage import get_storage
 from .conftest import PNG
 from .helpers import (FakeFal, generate, generate_and_run, make_png, make_project, mp4_bytes, run_all, upload_ref, use_fal, use_llm, used)
 
-pytestmark = pytest.mark.usefixtures("all_features")
+pytestmark = pytest.mark.usefixtures("all_features", "advanced_options")
 
 PROMPT = "A warrior walks slowly through an ancient city at night."
 OPTS = {"style": "Cinematic", "duration_seconds": 10, "aspect_ratio": "16:9"}
@@ -55,7 +55,7 @@ def test_video_schema_follows_provider_limits(client, make_user, monkeypatch):
     monkeypatch.setattr(get_settings(), "video_aspect_ratios", "16:9,9:16")
     h, _ = make_user()
     f = {x["key"]: x for g in client.get("/api/generate/schema", headers=h).json()["generators"] if g["id"] == "video" for x in g["fields"]}
-    assert f["duration_seconds"]["choices"] == ["10"] and f["aspect_ratio"]["choices"] == ["16:9", "9:16"]
+    assert f["duration_seconds"]["choices"] == ["5", "10"] and f["aspect_ratio"]["choices"] == ["16:9", "9:16"]
 
 
 def test_admin_sees_video_and_face_providers_without_secrets(client, make_user, monkeypatch):
@@ -83,15 +83,19 @@ def test_admin_can_disable_the_video_provider(client, make_user, monkeypatch):
 
 
 # ------------------------------------------------------------------ duration and aspect handling
+CAP15 = "Maximum video duration is 15 seconds. Duration adjusted to 15 seconds."
+
+
 @pytest.mark.parametrize("prompt,options,expected,note", [
     (PROMPT, {}, 10, None),
-    (PROMPT + " Make it 20 seconds.", {"duration_seconds": 10}, 20, None),
-    (PROMPT + " Make it 45 seconds.", {"duration_seconds": 10}, 30, "Maximum video duration is 30 seconds. Duration adjusted to 30 seconds."),
-    (PROMPT + " Make it 60 seconds.", {}, 30, "Maximum video duration is 30 seconds. Duration adjusted to 30 seconds."),
-    (PROMPT + " Make it 100 seconds long.", {}, 30, "Maximum video duration is 30 seconds. Duration adjusted to 30 seconds."),
-    (PROMPT + " Make the video longer.", {"duration_seconds": 10}, 30, "maximum video duration (30 seconds)"),
-    (PROMPT, {"duration_seconds": 20}, 20, None),
-    (PROMPT, {"duration_seconds": 45}, 30, "Maximum video duration is 30 seconds."),
+    (PROMPT + " Make it 5 seconds.", {"duration_seconds": 10}, 5, None),
+    (PROMPT + " Make it 45 seconds.", {"duration_seconds": 10}, 15, CAP15),
+    (PROMPT + " Make it 20 seconds.", {}, 15, CAP15),
+    (PROMPT + " Make it 100 seconds long.", {}, 15, CAP15),
+    (PROMPT + " Make the video longer.", {"duration_seconds": 10}, 15, "maximum video duration (15 seconds)"),
+    (PROMPT, {"duration_seconds": 5}, 5, None),
+    (PROMPT, {"duration_seconds": 15}, 15, None),
+    (PROMPT, {"duration_seconds": 45}, 15, "Maximum video duration is 15 seconds."),
 ])
 def test_video_duration_rules(client, make_user, prompt, options, expected, note):
     h, _ = make_user()
@@ -99,8 +103,18 @@ def test_video_duration_rules(client, make_user, prompt, options, expected, note
     assert r["metadata"]["options"]["duration_seconds"] == expected
     if note:
         assert any(note in w for w in r["metadata"]["warnings"])
-    if expected == 30 and note and "45" in prompt:
-        assert r["refined_prompt"].rstrip().endswith("Final duration: 30 seconds.")      # nothing else can be misread downstream
+    if expected == 15 and note and "45" in prompt:
+        assert r["refined_prompt"].rstrip().endswith("Final duration: 15 seconds.")      # nothing else can be misread downstream
+
+
+def test_only_5_10_and_15_seconds_are_offered_and_accepted(client, make_user):
+    h, _ = make_user()
+    f = {x["key"]: x for g in client.get("/api/generate/schema", headers=h).json()["generators"] if g["id"] == "video" for x in g["fields"]}
+    assert f["duration_seconds"]["choices"] == ["5", "10", "15"]
+    for ok in (5, 10, 15):
+        assert generate(client, h, "video", prompt=PROMPT, options={**OPTS, "duration_seconds": ok}).status_code == 201, ok
+    for bad in (4, 7, 20, 30):
+        assert generate(client, h, "video", prompt=PROMPT, options={**OPTS, "duration_seconds": bad}).status_code == 422, bad
 
 
 def test_duration_is_capped_again_by_the_provider_limit(client, make_user, monkeypatch):
@@ -109,8 +123,8 @@ def test_duration_is_capped_again_by_the_provider_limit(client, make_user, monke
     r = refine(client, h, PROMPT + " Make it 45 seconds.").json()
     assert r["metadata"]["options"]["duration_seconds"] == 10
     warnings = " ".join(r["metadata"]["warnings"])
-    assert "Maximum video duration is 30 seconds. Duration adjusted to 30 seconds." in warnings and "supports clips up to 10 seconds" in warnings
-    for bad in (20, 30, 45):     # the server never trusts the client: nothing above the provider's limit is accepted at submit
+    assert CAP15 in warnings and "supports clips up to 10 seconds" in warnings
+    for bad in (15, 20, 45):     # the server never trusts the client: nothing above the provider's limit is accepted at submit
         r = generate(client, h, "video", prompt=PROMPT, options={**OPTS, "duration_seconds": bad})
         assert r.status_code == 422, bad
     assert used(client, h, "video") == 0

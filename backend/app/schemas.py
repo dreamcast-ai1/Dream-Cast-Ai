@@ -293,3 +293,7 @@ class ProviderPatch(BaseModel):
 
 class FeaturesIn(BaseModel):
     features: dict[str, bool]
+
+
+class DefaultsIn(BaseModel):
+    values: dict[str, str | int | None]

@@ -10,8 +10,8 @@ from ..generators import BY_ID, canonical_generator
 from ..models import GeneratedAsset, GenerationJob, Project, ReferenceAsset, User
 from ..providers import ProviderError
 from . import context as ctx_service
-from . import features, jobs, provider_settings, subscriptions, usage
-from .generation_schema import AUX_KEYS, SPECS, normalize_options, validate_prompt
+from . import features, generation_defaults, jobs, provider_settings, subscriptions, usage
+from .generation_schema import ALLOWED_DURATIONS, AUX_KEYS, SPECS, advanced_keys, normalize_options, validate_prompt
 
 MAX_REFINED = 8000
 MAX_REFERENCES = 3
@@ -58,7 +58,9 @@ def prepare(db: Session, user: User, generator_type: str, prompt: str, options: 
     features.require_generator(db, generator)               # disabled features are refused here, whatever the UI shows
     spec = SPECS[generator]
     project = owned_project_or_404(db, user, project_id)
-    clean, warnings = normalize_options(generator, options, prompt or "", strict=strict)
+    # Normal users can't choose advanced options; anything left empty (all of those, and e.g. an unset duration) comes from Admin -> Defaults.
+    raw = generation_defaults.apply(db, generator, generation_defaults.strip_advanced(user, generator, options))
+    clean, warnings = normalize_options(generator, raw, prompt or "", strict=strict)
     features.check_languages(db, clean)
     prompt = validate_prompt(generator, prompt, clean)
     plan_notes = _check_plan_entitlements(db, user, generator, clean, strict)      # first: a plan limit beats input details
@@ -114,7 +116,7 @@ def _check_plan_entitlements(db: Session, user: User, generator: str, options: d
         message = f"Your plan allows videos up to {cap} seconds."
         if strict:
             raise AppError(message, 422, "validation_error")
-        options["duration_seconds"] = max((d for d in (10, 20, 30) if d <= cap), default=10)
+        options["duration_seconds"] = max((d for d in ALLOWED_DURATIONS if d <= cap), default=ALLOWED_DURATIONS[0])
         return [f"{message} Duration adjusted to {options['duration_seconds']} seconds."]
     return []
 

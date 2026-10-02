@@ -10,7 +10,7 @@ from app.providers import text as text_module
 from .conftest import PNG
 from .helpers import make_png
 
-pytestmark = pytest.mark.usefixtures("all_features")
+pytestmark = pytest.mark.usefixtures("all_features", "advanced_options")
 
 
 def project(client, h, title="The Lost Kingdom"):
@@ -77,27 +77,27 @@ def test_refine_music_prompt_optional_but_needs_something(client, make_user):
     assert refine(client, h, generator_type="lyrics", prompt="a song about rain").status_code == 200
 
 
-def test_video_duration_is_capped_at_30_not_silently_forwarded(client, make_user):
+def test_video_duration_is_capped_at_15_not_silently_forwarded(client, make_user):
     h, _ = make_user()
     r = refine(client, h, prompt="A knight rides a horse. Make it 45 seconds.").json()
-    assert r["metadata"]["options"]["duration_seconds"] == 30
-    assert "Maximum video duration is 30 seconds. Duration adjusted to 30 seconds." in r["metadata"]["warnings"]
+    assert r["metadata"]["options"]["duration_seconds"] == 15
+    assert "Maximum video duration is 15 seconds. Duration adjusted to 15 seconds." in r["metadata"]["warnings"]
     r = refine(client, h, prompt="A knight rides.", options={"duration_seconds": 45}).json()
-    assert r["metadata"]["options"]["duration_seconds"] == 30
+    assert r["metadata"]["options"]["duration_seconds"] == 15
     r = refine(client, h, prompt="A knight rides for 2 minutes").json()
-    assert r["metadata"]["options"]["duration_seconds"] == 30
-    r = refine(client, h, prompt="A knight rides for 20 seconds").json()
-    assert r["metadata"]["options"]["duration_seconds"] == 20
+    assert r["metadata"]["options"]["duration_seconds"] == 15
+    r = refine(client, h, prompt="A knight rides for 15 seconds").json()
+    assert r["metadata"]["options"]["duration_seconds"] == 15
     assert refine(client, h, prompt="A knight rides").json()["metadata"]["options"]["duration_seconds"] == 10
     # The Create form always sends its default (10). A duration typed in the prompt must still win / be capped.
     r = refine(client, h, prompt="A dragon circles a castle. Make it 45 seconds.", options={"duration_seconds": 10}).json()
-    assert r["metadata"]["options"]["duration_seconds"] == 30
-    assert "Maximum video duration is 30 seconds. Duration adjusted to 30 seconds." in r["metadata"]["warnings"]
-    assert r["refined_prompt"].rstrip().endswith("Final duration: 30 seconds.")
-    r = refine(client, h, prompt="A dragon, 20 seconds", options={"duration_seconds": 10}).json()
-    assert r["metadata"]["options"]["duration_seconds"] == 20 and any("20-second" in w for w in r["metadata"]["warnings"])
-    r = refine(client, h, prompt="A knight rides", options={"duration_seconds": 15}).json()
-    assert r["metadata"]["options"]["duration_seconds"] in (10, 20) and r["metadata"]["warnings"]
+    assert r["metadata"]["options"]["duration_seconds"] == 15
+    assert "Maximum video duration is 15 seconds. Duration adjusted to 15 seconds." in r["metadata"]["warnings"]
+    assert r["refined_prompt"].rstrip().endswith("Final duration: 15 seconds.")
+    r = refine(client, h, prompt="A dragon, 5 seconds", options={"duration_seconds": 10}).json()
+    assert r["metadata"]["options"]["duration_seconds"] == 5 and any("5-second" in w for w in r["metadata"]["warnings"])
+    r = refine(client, h, prompt="A knight rides", options={"duration_seconds": 12}).json()
+    assert r["metadata"]["options"]["duration_seconds"] == 10 and r["metadata"]["warnings"]       # not one of 5/10/15: the nearest is used, with a note
 
 
 def test_refine_project_ownership_and_context(client, make_user):
@@ -198,7 +198,7 @@ def test_generate_validation(client, make_user):
     assert generate(client, h, refined_prompt="", **v).status_code == 422
     assert generate(client, h, original_prompt="", **v).status_code == 422
     r = generate(client, h, options={"duration_seconds": 45}, **v)
-    assert r.status_code == 422 and "30 seconds" in r.json()["error"]["message"]
+    assert r.status_code == 422 and "15 seconds" in r.json()["error"]["message"]
     assert generate(client, h, options={"aspect_ratio": "4:3"}, **v).status_code == 422
     assert generate(client, h, refined_prompt="x" * 8001, **v).status_code == 422
     with SessionLocal() as db:

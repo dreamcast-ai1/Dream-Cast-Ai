@@ -70,7 +70,7 @@ class FalImageProvider(FalQueueProvider, ImageProvider):
         return list(ASPECT_RATIOS)
 
     def info(self) -> dict:
-        return {"model": self.s.image_provider_model, "aspect_ratios": self.supported_aspect_ratios(), "key_configured": bool(self.api_key)}
+        return {"model": self.s.image_provider_model, "aspect_ratios": self.supported_aspect_ratios(), "credential": "IMAGE_PROVIDER_API_KEY (or VIDEO_PROVIDER_API_KEY)", "key_configured": bool(self.api_key)}
 
     def build_request(self, request: GenerationRequest) -> tuple[str, dict]:
         if not self.is_configured():

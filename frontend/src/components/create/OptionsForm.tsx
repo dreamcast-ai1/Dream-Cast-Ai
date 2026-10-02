@@ -24,7 +24,7 @@ function FieldControl({ f, options, set, projectId }: { f: FieldDef; options: Op
   const label = <label htmlFor={id} className="mb-1.5 block text-sm font-medium">{f.label}</label>;
   if (f.kind === "textarea") return <div className="sm:col-span-2">{label}<textarea id={id} className="field min-h-[4.5rem]" maxLength={1000} value={str} onChange={(e) => set(f.key, e.target.value)} />{f.help && <p className="mt-1 text-xs text-muted">{f.help}</p>}</div>;
   if (f.kind === "text") return <div>{label}<input id={id} className="field" maxLength={120} value={str} onChange={(e) => set(f.key, e.target.value)} />{f.help && <p className="mt-1 text-xs text-muted">{f.help}</p>}</div>;
-  const isDuration = f.kind === "duration";
+  const isDuration = f.kind === "duration" || f.key === "duration_seconds";
   return (
     <div>
       {label}
@@ -45,10 +45,22 @@ function FieldControl({ f, options, set, projectId }: { f: FieldDef; options: Op
 export function OptionsForm({ schema, options, onChange, projectId }: { schema: GeneratorSchema; options: Options; onChange: (o: Options) => void; projectId: string }) {
   if (!schema.fields.length) return null;
   const set = (k: string, v: unknown) => onChange({ ...options, [k]: v });
+  // Advanced fields only ever arrive for administrators (the server removes them for everyone else); they sit in a collapsed section.
+  const basic = schema.fields.filter((f) => !f.advanced), advanced = schema.fields.filter((f) => f.advanced);
   return (
-    <fieldset className="grid gap-4 sm:grid-cols-2">
-      <legend className="sr-only">{schema.label} options</legend>
-      {schema.fields.map((f) => <FieldControl key={f.key} f={f} options={options} set={set} projectId={projectId} />)}
-    </fieldset>
+    <div className="space-y-4">
+      {basic.length > 0 && <fieldset className="grid gap-4 sm:grid-cols-2">
+        <legend className="sr-only">{schema.label} options</legend>
+        {basic.map((f) => <FieldControl key={f.key} f={f} options={options} set={set} projectId={projectId} />)}
+      </fieldset>}
+      {advanced.length > 0 && (
+        <details className="rounded-lg border border-border p-3" data-testid="advanced-options">
+          <summary className="cursor-pointer text-sm font-medium">Advanced settings <span className="text-xs font-normal text-muted">(administrators only)</span></summary>
+          <fieldset className="mt-3 grid gap-4 sm:grid-cols-2">
+            <legend className="sr-only">{schema.label} advanced options</legend>
+            {advanced.map((f) => <FieldControl key={f.key} f={f} options={options} set={set} projectId={projectId} />)}
+          </fieldset>
+        </details>)}
+    </div>
   );
 }

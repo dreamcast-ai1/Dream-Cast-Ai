@@ -9,7 +9,7 @@ from .fal import FalQueueProvider, data_uri, read_reference
 from ..generators import ASPECT_RATIOS
 from .base import Provider
 
-DURATIONS = (10, 20, 30)
+DURATIONS = (5, 10, 15)
 IMAGE_METHOD = "Image to Video"
 
 
@@ -145,7 +145,7 @@ class FalVideoProvider(FalQueueProvider, VideoProvider):
     def info(self) -> dict:
         return {"model": self.model, "i2v_model": self.s.video_provider_i2v_model or None, "durations": self.supported_durations(),
                 "aspect_ratios": self.supported_aspect_ratios(), "image_to_video": self.supports_image_to_video,
-                "reference_images": False, "key_configured": bool(self.s.video_provider_api_key)}
+                "reference_images": False, "credential": "VIDEO_PROVIDER_API_KEY", "key_configured": bool(self.s.video_provider_api_key)}
 
     def build_request(self, request: GenerationRequest) -> tuple[str, dict]:
         if not self.is_configured():

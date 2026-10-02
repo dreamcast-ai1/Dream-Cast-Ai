@@ -516,6 +516,19 @@ Image and video use two different Pollinations keys. Errors map to the usual mes
 (the last frame is held if the narration is longer), lowers any clip sound, loops the soundtrack quietly underneath, and writes an H.264 + AAC MP4 (`+faststart`) that plays in every browser. Assembly never calls an AI provider.
 Everything is stored through the normal storage layer (S3/R2 in production), so the Render disk being ephemeral does not matter.
 
+## Durations, simple vs. advanced options, and admin defaults
+
+**Durations are exactly 5, 10 or 15 seconds** for video and music, and optionally for voice ("Spoken length"):
+- *Video:* the chosen length is sent to the provider (fal.ai Kling gets it directly). Pollinations models only make certain lengths (e.g. Veo 4/6/8 s), so the nearest supported one is requested, the clip's real length is measured from the file and recorded (`requested_seconds`, `provider_seconds`), and unknown models get no duration parameter at all.
+- *Music:* MusicGen only approximates a length, so FFmpeg trims (with a short fade) or pads the audio to exactly the chosen length.
+- *Voice:* short speech is padded with silence, slightly long speech is sped up (at most 1.25x), and speech that still doesn't fit is kept whole, never cut in the middle.
+
+**Normal users see only the prompt, basic options and the duration.** Style, genre, mood, emotion, accent, voice gender and a named voice are *administrator options*: the server removes them from schema responses and from submitted requests, so calling the API directly doesn't bypass this.
+Administrators see them under **Advanced settings** on Create, and set what everyone else gets in **Admin → Defaults** (stored in the existing `app_settings` table; no migration). Provider/model choice stays in configuration (`*_PROVIDER`, `*_MODEL`, keys); Admin → Providers shows which credential variable each provider uses (names only).
+
+**Credentials are never shared between providers:** `VIDEO_PROVIDER_API_KEY` (fal.ai video; also the image fallback for fal.ai), `POLLINATIONS_IMAGE_API_KEY`, `POLLINATIONS_VIDEO_API_KEY`, `KNOWLEZ_API_KEY`, `VOICE_API_KEY` (Google), `MUSIC_API_KEY` (Hugging Face), `LLM_API_KEY` (Gemini/Groq).
+Pollinations requests carry only parameters valid for their kind (images: width/height; video: aspectRatio and a model-supported duration; never `resolution`), and if a model still rejects a named optional parameter it is dropped and the request repeated once.
+
 ## Images and the Library
 
 **Image generation** (Create → Image) uses fal.ai text-to-image (default `fal-ai/flux/schnell`, the cheapest model) behind the same provider

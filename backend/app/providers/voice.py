@@ -51,6 +51,24 @@ class VoiceProvider(SyncProvider):
                                         f"{', '.join(self.supported_languages())}.")
         return locale, notes
 
+    @staticmethod
+    def target_seconds(options: dict) -> int | None:
+        try:
+            v = int(options.get("duration_seconds") or 0)
+        except (TypeError, ValueError):
+            return None
+        return v if v in (5, 10, 15) else None
+
+    def fit_length(self, data: bytes, options: dict, notes: list[str]) -> tuple[bytes, float | None]:
+        """Honours the optional spoken length: silence pads short speech, a slight speed-up fits slightly long speech, and speech is never cut off."""
+        from .. import media
+        target = self.target_seconds(options)
+        if not target:
+            return data, None
+        data, _, _, seconds, extra = media.fit_audio_duration(data, ".mp3", float(target), allow_speedup=True)
+        notes.extend(extra)
+        return data, seconds
+
     def validate_options(self, generator: str, options: dict, text: str = "", refs: list[dict] | None = None) -> list[str]:
         _, notes = self.resolve_locale(options)
         if text and len(text.encode("utf-8")) > self.max_text_bytes():
@@ -100,7 +118,7 @@ class GoogleTTSProvider(VoiceProvider):
         return sorted({loc for loc, _ in GOOGLE_VOICES})
 
     def info(self) -> dict:
-        return {"model": "Neural2 / Standard voices", "languages": self.supported_languages(),
+        return {"model": "Neural2 / Standard voices", "credential": "VOICE_API_KEY", "languages": self.supported_languages(),
                 "voice_controls": {"gender": "supported", "accent": "chosen by locale", "emotion": "approximated (speaking rate and pitch)"}}
 
     def _url(self) -> str:
@@ -142,7 +160,10 @@ class GoogleTTSProvider(VoiceProvider):
             data = b""
         if not data:
             raise ProviderError(ErrorCode.GENERATION_FAILED, "no audioContent", transient=True, message="The voice provider didn't return audio. Please try again.")
-        return ProviderResult(file=(data, ".mp3", "audio/mpeg"), language=LOCALE_LANGUAGE[locale],
+        data, seconds = self.fit_length(data, o, notes)
+        if o.get("voice"):
+            notes.append("Named voices aren't used by this provider; the gender/accent voice was used.")
+        return ProviderResult(file=(data, ".mp3", "audio/mpeg"), language=LOCALE_LANGUAGE[locale], duration_seconds=seconds,
                               meta={"voice": voice, "locale": locale, "gender": gender, "accent": o.get("accent"), "emotion": emotion,
                                     "notes": notes, "characters": len(text)})
 

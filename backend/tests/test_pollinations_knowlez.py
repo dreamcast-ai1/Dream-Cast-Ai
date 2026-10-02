@@ -19,7 +19,7 @@ from app.providers import pollinations as pol_module
 
 from .helpers import _client, generate, make_png, make_project, mp4_bytes, run_all
 
-pytestmark = pytest.mark.usefixtures("all_features")
+pytestmark = pytest.mark.usefixtures("all_features", "advanced_options")
 KEY_IMG, KEY_VID, KEY_TTS = "sk_img_SECRET_123456", "sk_vid_SECRET_123456", "knz_SECRET_123456"
 
 

@@ -9,8 +9,8 @@ from ..generators import GENERATORS
 from ..models import GenerationJob, Payment, Subscription, UsageRecord, User
 from ..plans import DEFAULT_PLAN_ID, PLANS, get_plan, public_plans
 from ..providers import registry
-from ..schemas import AdminUserPatch, FeaturesIn, JobOut, LimitsIn, ProviderPatch, SubscriptionPatch, UserOut
-from ..services import features, provider_settings, subscriptions, usage
+from ..schemas import AdminUserPatch, DefaultsIn, FeaturesIn, JobOut, LimitsIn, ProviderPatch, SubscriptionPatch, UserOut
+from ..services import features, generation_defaults, provider_settings, subscriptions, usage
 
 # Every route in this router requires an ADMIN, enforced server-side.
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(admin_user)])
@@ -135,3 +135,15 @@ def get_features(db: Session = Depends(get_db)):
 def put_features(body: FeaturesIn, db: Session = Depends(get_db)):
     features.set_flags(db, body.features)
     return {"features": features.describe(db)}
+
+
+@router.get("/defaults")
+def get_generation_defaults(db: Session = Depends(get_db)):
+    """The options normal users never see, with the default every generation uses for them (administrators only)."""
+    return {"generators": generation_defaults.describe(db)}
+
+
+@router.put("/defaults/{generator}")
+def put_generation_defaults(generator: str, body: DefaultsIn, db: Session = Depends(get_db)):
+    generation_defaults.set_defaults(db, generator, body.values)
+    return {"generators": generation_defaults.describe(db)}

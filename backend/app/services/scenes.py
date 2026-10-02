@@ -62,7 +62,7 @@ def scene_out(db: Session, scene: Scene) -> dict:
 
 
 def _duration(value, notes: list[str]) -> int:
-    """Clip length: 10, 20 or 30 s. Anything longer is capped to 30 (and we say so); this is the same rule as the Video generator."""
+    """Clip length: 5, 10 or 15 s. Anything longer is capped to 15 (and we say so); this is the same rule as the Video generator."""
     return _resolve_duration("video", value, "", notes, strict=False)
 
 

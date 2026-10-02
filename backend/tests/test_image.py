@@ -10,7 +10,7 @@ from app.services import subscriptions
 
 from .helpers import FakeFal, generate, make_project, run_all, use_fal
 
-pytestmark = pytest.mark.usefixtures("all_features")
+pytestmark = pytest.mark.usefixtures("all_features", "advanced_options")
 
 PROMPT = "A lone warrior at the gate of a ruined castle at sunrise."
 OPTS = {"style": "Cinematic", "aspect_ratio": "16:9"}

@@ -112,7 +112,7 @@ class Settings(BaseSettings):
     music_api_key: str = ""
     music_model: str = "facebook/musicgen-small"
     music_base_url: str = ""
-    music_max_seconds: int = 30         # longest clip the configured provider/model can produce
+    music_max_seconds: int = 15         # longest clip offered (5, 10 or 15 s); the audio is trimmed/padded to the exact length with FFmpeg
     music_timeout_seconds: float = 240.0
 
     # Voice / text-to-speech provider (external). google = Google Cloud Text-to-Speech (free monthly tier).
@@ -128,7 +128,7 @@ class Settings(BaseSettings):
     video_provider_i2v_model: str = "fal-ai/kling-video/v3/standard/image-to-video"   # empty = no image-to-video
     video_generate_audio: bool = False      # Kling v3 can add sound at a higher price; off keeps clips cheap (assembly keeps any audio that exists)
     video_provider_base_url: str = ""
-    video_max_seconds: int = 10             # longest clip the configured model can make (10, 20 or 30). Never exceeded.
+    video_max_seconds: int = 15             # longest clip the configured model can make (5, 10 or 15). Never exceeded.
     video_aspect_ratios: str = "16:9,9:16,1:1"
     video_poll_seconds: float = 8.0
     video_max_download_mb: int = 300

@@ -5,7 +5,7 @@ from app.providers import registry
 
 from .helpers import (LYRICS, SCRIPT, STORY, generate, generate_and_run, llm_reply, make_project, run_all, use_llm, used)
 
-pytestmark = pytest.mark.usefixtures("all_features")
+pytestmark = pytest.mark.usefixtures("all_features", "advanced_options")
 
 
 def refine(client, h, gen, prompt="A warrior discovers a hidden kingdom.", **kw):

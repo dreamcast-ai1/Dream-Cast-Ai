@@ -15,7 +15,7 @@ from app.storage import get_storage
 
 from .helpers import SCRIPT, FakeFal, generate, make_project, run_all, use_fal
 
-pytestmark = pytest.mark.usefixtures("all_features")
+pytestmark = pytest.mark.usefixtures("all_features", "advanced_options")
 
 _CLIPS: dict = {}
 
@@ -83,15 +83,15 @@ def test_scene_crud_is_free_and_numbered(client, make_user):
     assert video_used(client, h) == 0                                      # none of that cost a video credit
 
 
-def test_scene_duration_follows_the_30_second_rule(client, make_user):
+def test_scene_duration_follows_the_15_second_rule(client, make_user):
     h, _ = make_user()
     pid = make_project(client, h)
     s = new_scene(client, h, pid, duration_seconds=60)
-    assert s["duration_seconds"] == 30 and any("30 seconds" in n for n in s["notes"])
-    assert new_scene(client, h, pid, duration_seconds=20)["duration_seconds"] == 20
+    assert s["duration_seconds"] == 15 and any("15 seconds" in n for n in s["notes"])
+    assert new_scene(client, h, pid, duration_seconds=5)["duration_seconds"] == 5
     assert new_scene(client, h, pid)["duration_seconds"] == 10
     r = client.patch(f"/api/projects/{pid}/scenes/{s['id']}", headers=h, json={"duration_seconds": 120}).json()
-    assert r["duration_seconds"] == 30 and r["notes"]
+    assert r["duration_seconds"] == 15 and r["notes"]
 
 
 def test_scenes_belong_to_their_owner(client, make_user):

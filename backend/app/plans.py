@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from .config import get_settings
 
 DEFAULT_PLAN_ID = "teaser"
-HARD_MAX_VIDEO_SECONDS = 30          # no plan may exceed this for ONE generated clip; also enforced in generation_schema
+HARD_MAX_VIDEO_SECONDS = 15          # no plan may exceed this for ONE generated clip; also enforced in generation_schema
 
 # Monthly allowance of the free TEASER plan, per generator id. Videos are the headline limit: teaser 5, trailer 15, movie 40.
 # Every other generator scales with the same ratio (1x / 3x / 8x).
@@ -54,7 +54,7 @@ def _limits(plan_id: str) -> dict[str, int]:
     return limits
 
 
-_FEATURES = {"max_video_seconds": 30, "image_to_video": True, "face_replacement": True}
+_FEATURES = {"max_video_seconds": 15, "image_to_video": True, "face_replacement": True}
 
 
 def _build() -> dict[str, Plan]:

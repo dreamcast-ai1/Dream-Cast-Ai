@@ -2,6 +2,7 @@
 Documented request: {text (max 4000 chars), voice, format: mp3|pcm, speed: 0.5-2.0, return: audio|url}; the answer is the audio itself (201)."""
 import logging
 import os
+import re
 import tempfile
 
 import httpx
@@ -48,7 +49,7 @@ class KnowlezVoiceProvider(VoiceProvider):
     def info(self) -> dict:
         return {"model": "Knowlez TTS", "languages": self.supported_languages(),
                 "voice_controls": {"gender": "supported", "accent": "American or British voices", "emotion": "approximated (speaking speed)"},
-                "key_configured": bool(self.s.knowlez_api_key)}
+                "credential": "KNOWLEZ_API_KEY", "key_configured": bool(self.s.knowlez_api_key)}
 
     def _voice(self, locale: str, gender: str) -> str:
         s, british = self.s, locale == "en-GB"
@@ -71,7 +72,10 @@ class KnowlezVoiceProvider(VoiceProvider):
             notes.append(f"Emotion '{emotion}' is approximated with speaking speed; this provider has no true emotion control.")
         if locale == "en-IN":
             notes.append("This provider has no Indian-English voice; an American English voice was used.")
-        voice = self._voice(locale, gender)
+        named = (o.get("voice") or "").strip()
+        if named and not re.fullmatch(r"[A-Za-z0-9_.-]{1,60}", named):
+            raise ProviderError(ErrorCode.INVALID_REQUEST, "invalid voice name", message="That voice name isn't valid.")
+        voice = named or self._voice(locale, gender)
         body = {"text": text[:MAX_TEXT], "voice": voice, "format": "mp3", "speed": speed, "return": "audio"}
         url = f"{s.knowlez_base_url.rstrip('/')}/v1/tts/synthesise"
         try:
@@ -84,19 +88,22 @@ class KnowlezVoiceProvider(VoiceProvider):
         if not res.content or ctype.startswith(("application/json", "text/")):
             raise ProviderError(ErrorCode.GENERATION_FAILED, f"no audio in response ({ctype or 'no content-type'})", transient=True,
                                 message="The voice provider didn't return audio. Please try again.")
-        duration = None
+        audio, duration = res.content, None
         from .. import media
         fd, tmp = tempfile.mkstemp(prefix="dc_tts_", suffix=".mp3")
         try:
             with os.fdopen(fd, "wb") as f:
-                f.write(res.content)
+                f.write(audio)
             duration = media.audio_duration(tmp)
         finally:
             try:
                 os.unlink(tmp)
             except OSError:
                 pass
-        log.info("knowlez voice ok (%s bytes)", len(res.content))
-        return ProviderResult(file=(res.content, ".mp3", "audio/mpeg"), language="English", duration_seconds=duration,
+        if self.target_seconds(o):
+            audio, fitted = self.fit_length(audio, o, notes)
+            duration = fitted or duration
+        log.info("knowlez voice ok (%s bytes)", len(audio))
+        return ProviderResult(file=(audio, ".mp3", "audio/mpeg"), language="English", duration_seconds=duration,
                               meta={"voice": voice, "locale": locale, "gender": gender, "emotion": emotion, "speed": speed, "notes": notes, "characters": len(text),
                                     "provider": "knowlez"})
