@@ -60,3 +60,12 @@ def make_user(client):
         assert r.status_code == 200, r.text
         return {"Authorization": f"Bearer {r.json()['access_token']}"}, r.json()["user"]
     return _make
+
+
+@pytest.fixture
+def all_features():
+    """Switch on everything an administrator can enable (face swap, avatars, Hindi, Telugu); the defaults keep those off."""
+    from app.db import SessionLocal
+    from app.services import features
+    with SessionLocal() as db:
+        features.set_flags(db, {"face_swap": True, "ai_avatar": True, "interactive_avatar": True, "hindi": True, "telugu": True})

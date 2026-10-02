@@ -2,7 +2,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import model_validator
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -16,7 +16,7 @@ MIN_PRODUCTION_SECRET_LENGTH = 32
 
 class Settings(BaseSettings):
     # hide_input_in_errors: a failed validation must never echo the settings (and so the secrets) into the startup log
-    model_config = SettingsConfigDict(env_file=ROOT_DIR / ".env", extra="ignore", hide_input_in_errors=True)
+    model_config = SettingsConfigDict(env_file=ROOT_DIR / ".env", extra="ignore", hide_input_in_errors=True, populate_by_name=True)
 
     app_env: str = "development"  # development | production | test
     database_url: str = f"sqlite:///{BACKEND_DIR / 'dreamcast.db'}"
@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     trust_proxy_headers: bool | None = None
 
     # Plan prices in whole rupees per month (INR). Change here (env), not in the frontend. 0 hides nothing: TRAILER is always free.
-    plan_indie_price_inr: int = 199
-    plan_blockbuster_price_inr: int = 499
+    plan_trailer_price_inr: int = Field(199, validation_alias=AliasChoices("PLAN_TRAILER_PRICE_INR", "PLAN_INDIE_PRICE_INR"))
+    plan_movie_price_inr: int = Field(499, validation_alias=AliasChoices("PLAN_MOVIE_PRICE_INR", "PLAN_BLOCKBUSTER_PRICE_INR"))
     plan_billing_days: int = 30       # how long one successful payment keeps a paid plan active
 
     # Razorpay (server-side only). Leave empty: the app runs normally and paid checkout answers "payments not configured".

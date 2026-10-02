@@ -221,7 +221,7 @@ class Subscription(Base, TimestampedMixin):
     __tablename__ = "subscriptions"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
-    plan_id: Mapped[str] = mapped_column(String(40), default="trailer", index=True)
+    plan_id: Mapped[str] = mapped_column(String(40), default="teaser", index=True)
     status: Mapped[str] = mapped_column(String(15), default="ACTIVE")    # ACTIVE | PAST_DUE | CANCELLED | EXPIRED
     started_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now)
     expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)   # renewal/expiry; None = never (free plan)

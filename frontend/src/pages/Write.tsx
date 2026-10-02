@@ -2,7 +2,7 @@ import { ArrowRight, Check, Copy, RotateCcw, Wand2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { SelectField, TextArea } from "../components/ui/Field";
-import { Alert, ErrorState, PageHeader, PageLoader, Spinner } from "../components/ui/feedback";
+import { Alert, EmptyState, ErrorState, PageHeader, PageLoader, Spinner } from "../components/ui/feedback";
 import { TabPanel, Tabs } from "../components/ui/Tabs";
 import { useAsync } from "../hooks/useAsync";
 import { api, errorMessage } from "../lib/api";
@@ -95,7 +95,7 @@ function StoryGenerator({ opts, projects, onUseStory }: { opts: TextOptions; pro
           <CharacterChips characters={result.characters} />
           <dl className="grid gap-3 sm:grid-cols-2">{sections.filter(([, v]) => v).map(([k, v]) => <div key={k} className="rounded-lg border border-border p-3"><dt className="text-xs font-semibold uppercase tracking-widest text-muted">{k}</dt><dd className="mt-1 text-sm">{v}</dd></div>)}</dl>
           <div className="space-y-3 text-sm leading-relaxed" aria-label="Full story">{result.full_story.split(/\n\s*\n/).map((p, i) => <p key={i}>{p}</p>)}</div>
-          <p className="text-xs text-muted">{result.word_count} words · {result.language}{result.genre ? ` · ${result.genre}` : ""}{result.tone ? ` · ${result.tone}` : ""} · {result.remaining} stories left today</p>
+          <p className="text-xs text-muted">{result.word_count} words · {result.language}{result.genre ? ` · ${result.genre}` : ""}{result.tone ? ` · ${result.tone}` : ""} · {result.remaining} stories left this period</p>
           <SavedNote saved={result.saved} tab="story" />
           <hr className="border-border" />
           <Reviewer label="Review and edit your story" original={result.text} value={draft} onChange={setDraft} rows={10}
@@ -163,7 +163,7 @@ function ScriptGenerator({ opts, projects, story, setStory }: { opts: TextOption
             {result.logline && <p className="mt-1 text-sm italic text-muted">{result.logline}</p>}</div>
           <CharacterChips characters={result.characters} />
           <ol className="space-y-3">{result.scenes.map((s) => <SceneCard key={s.number} s={s} />)}</ol>
-          <p className="text-xs text-muted">{result.scene_count} scenes · about {mmss(result.estimated_total_seconds)} of screen time · {result.word_count} words · {result.language} · {result.remaining} scripts left today</p>
+          <p className="text-xs text-muted">{result.scene_count} scenes · about {mmss(result.estimated_total_seconds)} of screen time · {result.word_count} words · {result.language} · {result.remaining} scripts left this period</p>
           <SavedNote saved={result.saved} tab="script" />
           <hr className="border-border" />
           <Reviewer label="Review and edit your script" original={result.text} value={draft} onChange={setDraft} rows={14}
@@ -178,17 +178,20 @@ function ScriptGenerator({ opts, projects, story, setStory }: { opts: TextOption
 export default function Write() {
   const { mode } = useParams();
   const nav = useNavigate();
-  const tab = mode === "script" ? "script" : "story";
+  const on = (g: string) => opts.data?.generators?.[g] !== false;        // an administrator can switch Story and Script off separately
+  const tab = mode === "script" ? (on("script") ? "script" : "story") : (on("story") ? "story" : "script");
   const opts = useAsync(() => api<TextOptions>("/api/text/options"));
   const projects = useAsync(() => api<Project[]>("/api/projects"));
   const [story, setStory] = useState("");
   if (opts.loading) return <PageLoader />;
   if (opts.error || !opts.data) return <ErrorState message={opts.error ?? "Couldn't load the writing tools."} onRetry={opts.reload} />;
+  if (!on("story") && !on("script")) return <EmptyState icon="🚫" title="Writing tools are not available right now." hint="An administrator has switched them off. Your saved stories and scripts are still in your projects." />;
+  const tabs = TABS.filter((t) => on(t.id));
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader title="Write" subtitle="Turn an idea into a story, review it, then convert it to a script. Nothing is sent to image or video generation unless you choose to." />
       {!opts.data.configured && <div className="mb-4"><Alert kind="info">{UNAVAILABLE}</Alert></div>}
-      <Tabs label="Writing tools" tabs={TABS} active={tab} onChange={(id) => nav(id === "script" ? "/write/script" : "/write", { replace: true })} />
+      <Tabs label="Writing tools" tabs={tabs} active={tab} onChange={(id) => nav(id === "script" ? "/write/script" : "/write", { replace: true })} />
       <TabPanel id={tab}>
         {tab === "story"
           ? <StoryGenerator opts={opts.data} projects={projects.data ?? []} onUseStory={(t) => { setStory(t); nav("/write/script"); }} />

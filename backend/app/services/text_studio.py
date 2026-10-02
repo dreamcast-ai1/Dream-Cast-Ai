@@ -75,7 +75,7 @@ def _reserve(db: Session, user: User, generator: str, provider: str):
     """Check the daily allowance and take one unit, as one step (same allowance as the queued generators)."""
     with _QUOTA_LOCK:
         if not usage.has_quota(db, user.id, generator):
-            raise AppError(f"You've reached today's {BY_ID[generator].label} limit. It resets at midnight UTC.", 429, "QUOTA_EXCEEDED")
+            raise AppError(f"You've reached your {BY_ID[generator].label} limit for this plan. It resets at the start of next month (UTC); upgrade for a bigger allowance.", 429, "QUOTA_EXCEEDED")
         rec = usage.reserve(db, user.id, generator, None, provider)
         db.commit()
     return rec

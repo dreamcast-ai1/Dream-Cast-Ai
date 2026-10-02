@@ -30,11 +30,14 @@ def set_plan(client, admin_h, user_id, plan_id, days=None):
     return client.patch(f"/api/admin/users/{user_id}/subscription", headers=admin_h, json={"plan_id": plan_id, "days": days})
 
 
-def patch_plan(monkeypatch, plan_id="trailer", **changes):
+def patch_plan(monkeypatch, plan_id="teaser", **changes):
     """Swap a plan for a modified copy (plans are frozen config), e.g. to test entitlement checks."""
     p = plans_module.PLANS[plan_id]
     features = {**p.features, **changes.pop("features", {})}
     monkeypatch.setitem(plans_module.PLANS, plan_id, dataclasses.replace(p, features=features, **changes))
+
+
+pytestmark = pytest.mark.usefixtures("all_features")
 
 
 # ------------------------------------------------------------------ plans and default subscription
@@ -42,33 +45,34 @@ def test_plan_catalogue_is_public_and_uses_movie_names(client):
     r = client.get("/api/subscription/plans")                      # no authentication needed
     assert r.status_code == 200 and r.json()["payments_enabled"] is False        # no Razorpay keys in tests
     ps = r.json()["plans"]
-    assert [p["name"] for p in ps] == ["Trailer", "Indie", "Blockbuster"]
-    assert [p["id"] for p in ps] == ["trailer", "indie", "blockbuster"]
-    assert [p["tagline"] for p in ps] == ["Watch the story", "Start making your own films", "For serious production"]
+    assert [p["name"] for p in ps] == ["Teaser", "Trailer", "Movie"]
+    assert [p["id"] for p in ps] == ["teaser", "trailer", "movie"]
+    assert [p["tagline"] for p in ps] == ["A first look", "Start making your own films", "For serious production"]
     assert [p["price_minor"] for p in ps] == [0, 19900, 49900] and all(p["currency"] == "INR" for p in ps)
     assert ps[0]["billing_period"] == "free" and all(p["billing_period"] == "month" for p in ps[1:])
 
 
 def test_prices_come_from_settings_not_code(monkeypatch):
     from app.config import get_settings
-    monkeypatch.setattr(get_settings(), "plan_indie_price_inr", 249)
-    assert plans_module._build()["indie"].price_minor == 24900
+    monkeypatch.setattr(get_settings(), "plan_trailer_price_inr", 249)
+    assert plans_module._build()["trailer"].price_minor == 24900
 
 
-def test_each_tier_is_about_four_times_the_previous(client):
+def test_video_allowance_is_5_15_40_and_everything_else_scales_with_it(client):
     ps = {p["id"]: p for p in client.get("/api/subscription/plans").json()["plans"]}
-    order = ["trailer", "indie", "blockbuster"]
-    for gen in ("story", "script", "lyrics", "music", "voice", "video", "face_replacement"):
+    order = ["teaser", "trailer", "movie"]
+    assert [ps[i]["limits"]["video"] for i in order] == [5, 15, 40]
+    for gen in ("story", "script", "lyrics", "music", "voice", "image"):
         values = [ps[i]["limits"][gen] for i in order]
-        assert all(b == a * 4 for a, b in zip(values, values[1:])), (gen, values)
-    assert ps["trailer"]["limits"]["video"] == 3 and ps["trailer"]["limits"]["story"] == 5
+        assert values == [values[0], values[0] * 3, values[0] * 8], (gen, values)
+    assert [ps[i]["price_minor"] for i in order] == [0, 19900, 49900] and ps["teaser"]["limits"]["story"] == 20
     assert all(p["features"]["max_video_seconds"] <= 30 for p in ps.values())
 
 
-def test_new_user_gets_trailer_plan_automatically(client, make_user):
+def test_new_user_gets_teaser_plan_automatically(client, make_user):
     h, user = make_user()
     c = current(client, h)
-    assert c["plan"]["id"] == "trailer" and c["plan"]["name"] == "Trailer" and c["payments_enabled"] is False
+    assert c["plan"]["id"] == "teaser" and c["plan"]["name"] == "Teaser" and c["payments_enabled"] is False
     assert c["subscription"]["status"] == "ACTIVE" and c["subscription"]["expires_at"] is None and c["subscription"]["payment_provider"] is None
     with SessionLocal() as db:
         assert db.query(Subscription).filter_by(user_id=user["id"]).count() == 1
@@ -79,7 +83,7 @@ def test_user_created_before_subscriptions_existed_is_healed_on_first_request(cl
     with SessionLocal() as db:
         db.query(Subscription).delete()
         db.commit()
-    assert current(client, h)["plan"]["id"] == "trailer"
+    assert current(client, h)["plan"]["id"] == "teaser"
     with SessionLocal() as db:
         assert db.query(Subscription).filter_by(user_id=user["id"]).count() == 1
 
@@ -95,19 +99,19 @@ def test_usage_and_entitlements_endpoints(client, make_user):
     assert video(client, h).status_code == 201
     u = client.get("/api/subscription/usage", headers=h).json()
     v = next(i for i in u["items"] if i["generator"] == "video")
-    assert u["plan_id"] == "trailer" and u["period"] == "day" and u["resets_at"] and (v["used"], v["limit"], v["remaining"]) == (1, 3, 2)
+    assert u["plan_id"] == "teaser" and u["period"] == "month" and u["resets_at"] and (v["used"], v["limit"], v["remaining"]) == (1, 5, 4)
     assert {"story", "script", "music", "voice", "video", "face_replacement"} <= {i["generator"] for i in u["items"]}
     e = client.get("/api/subscription/entitlements", headers=h).json()
-    assert e["plan_id"] == "trailer" and e["features"]["max_video_seconds"] == 30 and e["limits"]["video"] == 3
+    assert e["plan_id"] == "teaser" and e["features"]["max_video_seconds"] == 30 and e["limits"]["video"] == 5
     legacy = client.get("/api/usage", headers=h).json()                  # the original endpoint keeps working
-    assert legacy["period"] == "today" and legacy["plan_name"] == "Trailer" and next(i for i in legacy["items"] if i["generator"] == "video")["remaining"] == 2
+    assert legacy["period"] == "this month" and legacy["plan_name"] == "Teaser" and next(i for i in legacy["items"] if i["generator"] == "video")["remaining"] == 4
 
 
 
 # ------------------------------------------------------------------ server-side enforcement
 def test_limits_are_enforced_by_the_api_not_the_buttons(client, make_user):
     h, _ = make_user()
-    assert [video(client, h).status_code for _ in range(4)] == [201, 201, 201, 429]
+    assert [video(client, h).status_code for _ in range(6)] == [201] * 5 + [429]
     r = video(client, h)
     assert r.json()["error"]["code"] == "QUOTA_EXCEEDED"
     h2, _ = make_user("b@example.com")
@@ -117,7 +121,7 @@ def test_limits_are_enforced_by_the_api_not_the_buttons(client, make_user):
 def test_every_tracked_generator_is_limited_per_plan(client, make_user):
     h, _ = make_user()
     codes = {}
-    for gen, n in (("story", 5), ("script", 3), ("music", 3), ("voice", 5), ("video", 3), ("face_replacement", 3)):
+    for gen, n in (("story", 20), ("script", 10), ("music", 10), ("voice", 20), ("video", 5), ("face_replacement", 3)):
         used = usage.get_limits  # noqa: F841 - documents that limits come from the plan service
         with SessionLocal() as db:
             uid = db.query(User).first().id
@@ -131,57 +135,57 @@ def test_every_tracked_generator_is_limited_per_plan(client, make_user):
 def test_upgrading_raises_limits_and_downgrading_restores_them(client, make_user):
     ah, _ = make_user("boss@example.com")
     h, user = make_user()
-    for _ in range(3):
+    for _ in range(5):
         assert video(client, h).status_code == 201
     assert video(client, h).status_code == 429
-    r = set_plan(client, ah, user["id"], "indie", days=30)
-    assert r.status_code == 200 and r.json()["plan_id"] == "indie" and r.json()["expires_at"]
+    r = set_plan(client, ah, user["id"], "trailer", days=30)
+    assert r.status_code == 200 and r.json()["plan_id"] == "trailer" and r.json()["expires_at"]
     c = current(client, h)
-    assert c["plan"]["name"] == "Indie" and c["subscription"]["payment_provider"] == "admin"
-    assert next(i for i in client.get("/api/subscription/usage", headers=h).json()["items"] if i["generator"] == "video")["limit"] == 12
+    assert c["plan"]["name"] == "Trailer" and c["subscription"]["payment_provider"] == "admin"
+    assert next(i for i in client.get("/api/subscription/usage", headers=h).json()["items"] if i["generator"] == "video")["limit"] == 15
     assert video(client, h).status_code == 201                           # the bigger allowance applies immediately
-    set_plan(client, ah, user["id"], "trailer")
+    set_plan(client, ah, user["id"], "teaser")
     assert current(client, h)["subscription"]["payment_provider"] is None
-    assert video(client, h).status_code == 429                           # used 4 today, free limit is 3
+    assert video(client, h).status_code == 429                           # used 6 this month, free limit is 5
 
 
 def test_expired_cancelled_and_unknown_plans_fall_back_to_free(client, make_user):
     ah, _ = make_user("boss@example.com")
     h, user = make_user()
-    set_plan(client, ah, user["id"], "blockbuster", days=30)
+    set_plan(client, ah, user["id"], "movie", days=30)
     with SessionLocal() as db:
         sub = db.query(Subscription).filter_by(user_id=user["id"]).one()
         sub.expires_at = datetime.now(timezone.utc) - timedelta(days=1)
         db.commit()
     c = current(client, h)
-    assert c["plan"]["id"] == "trailer" and c["subscription"]["plan_id"] == "blockbuster" and c["subscription"]["effective_plan_id"] == "trailer"
+    assert c["plan"]["id"] == "teaser" and c["subscription"]["plan_id"] == "movie" and c["subscription"]["effective_plan_id"] == "teaser"
     with SessionLocal() as db:
         sub = db.query(Subscription).filter_by(user_id=user["id"]).one()
         sub.expires_at, sub.status = None, "CANCELLED"
         db.commit()
-    assert current(client, h)["plan"]["id"] == "trailer"
+    assert current(client, h)["plan"]["id"] == "teaser"
     with SessionLocal() as db:
         sub = db.query(Subscription).filter_by(user_id=user["id"]).one()
         sub.status = "PAST_DUE"
         db.commit()
-    assert current(client, h)["plan"]["id"] == "blockbuster"             # grace period keeps access
+    assert current(client, h)["plan"]["id"] == "movie"             # grace period keeps access
     with SessionLocal() as db:
         sub = db.query(Subscription).filter_by(user_id=user["id"]).one()
         sub.status, sub.plan_id = "ACTIVE", "retired_plan"
         db.commit()
-    assert current(client, h)["plan"]["id"] == "trailer"                # a bad/retired plan id never locks anyone out or grants extras
+    assert current(client, h)["plan"]["id"] == "teaser"                # a bad/retired plan id never locks anyone out or grants extras
 
 
 def test_admin_subscription_endpoint_rules(client, make_user):
     ah, _ = make_user("boss@example.com")
     h, user = make_user()
-    assert set_plan(client, h, user["id"], "indie").status_code == 403           # users can't grant themselves a plan
+    assert set_plan(client, h, user["id"], "trailer").status_code == 403           # users can't grant themselves a plan
     assert set_plan(client, ah, user["id"], "platinum").status_code == 404
-    assert set_plan(client, ah, "nope", "indie").status_code == 404
-    assert client.patch(f"/api/admin/users/{user['id']}/subscription", headers=ah, json={"plan_id": "indie", "days": 0}).status_code == 422
-    assert current(client, h)["plan"]["id"] == "trailer"
+    assert set_plan(client, ah, "nope", "trailer").status_code == 404
+    assert client.patch(f"/api/admin/users/{user['id']}/subscription", headers=ah, json={"plan_id": "trailer", "days": 0}).status_code == 422
+    assert current(client, h)["plan"]["id"] == "teaser"
     users = client.get("/api/admin/users", headers=ah).json()
-    assert {u["email"]: u["plan_id"] for u in users} == {"boss@example.com": "trailer", "user@example.com": "trailer"}
+    assert {u["email"]: u["plan_id"] for u in users} == {"boss@example.com": "teaser", "user@example.com": "teaser"}
 
 
 def test_admin_limits_are_per_plan_and_legacy_overrides_still_apply(client, make_user):
@@ -191,14 +195,14 @@ def test_admin_limits_are_per_plan_and_legacy_overrides_still_apply(client, make
         db.add(AppSetting(key="daily_limits", value={"video": 7}))
         db.commit()
     assert next(i for i in client.get("/api/admin/limits", headers=ah).json()["items"] if i["generator"] == "video")["limit"] == 7
-    r = client.put("/api/admin/limits", headers=ah, json={"plan": "indie", "limits": {"video": 99}}).json()
-    assert r["plan"] == "indie" and next(i for i in r["items"] if i["generator"] == "video")["limit"] == 99
+    r = client.put("/api/admin/limits", headers=ah, json={"plan": "trailer", "limits": {"video": 99}}).json()
+    assert r["plan"] == "trailer" and next(i for i in r["items"] if i["generator"] == "video")["limit"] == 99
     assert next(i for i in client.get("/api/admin/limits", headers=ah).json()["items"] if i["generator"] == "video")["limit"] == 7
-    assert [p["id"] for p in client.get("/api/admin/limits", headers=ah).json()["plans"]] == ["trailer", "indie", "blockbuster"]
+    assert [p["id"] for p in client.get("/api/admin/limits", headers=ah).json()["plans"]] == ["teaser", "trailer", "movie"]
     assert client.get("/api/admin/limits?plan=nope", headers=ah).status_code == 404
     assert client.put("/api/admin/limits", headers=ah, json={"plan": "nope", "limits": {"video": 1}}).status_code == 404
     assert client.put("/api/admin/limits", headers=h, json={"limits": {"video": 99}}).status_code == 403
-    assert next(i for i in client.get("/api/subscription/plans").json()["plans"] if i["id"] == "indie")["limits"]["video"] == 99
+    assert next(i for i in client.get("/api/subscription/plans").json()["plans"] if i["id"] == "trailer")["limits"]["video"] == 99
 
 
 # ------------------------------------------------------------------ entitlements: video length and features
@@ -256,7 +260,7 @@ def test_monthly_plan_counts_the_whole_month(client, make_user, monkeypatch):
         from app.models import UsageRecord
         yesterday = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(seconds=1)
         first_of_month = usage.window_start("month")
-        for _ in range(3):
+        for _ in range(5):
             db.add(UsageRecord(user_id=user["id"], generator_type="video", status="SUCCEEDED", request_count=1,
                                created_at=max(first_of_month, yesterday)))
         db.commit()
@@ -283,7 +287,7 @@ def test_migration_gives_every_existing_user_the_free_plan(tmp_path):
     assert r.returncode == 0, r.stderr
     con = sqlite3.connect(db_file)
     rows = con.execute("SELECT user_id, plan_id, status FROM subscriptions ORDER BY user_id").fetchall()
-    assert rows == [("u0", "trailer", "ACTIVE"), ("u1", "trailer", "ACTIVE"), ("u2", "trailer", "ACTIVE")]
+    assert rows == [("u0", "teaser", "ACTIVE"), ("u1", "teaser", "ACTIVE"), ("u2", "teaser", "ACTIVE")]
     assert con.execute("SELECT count(*) FROM users").fetchone()[0] == 3        # nothing was lost
     assert run("upgrade", "head").returncode == 0                              # re-running is safe
     assert run("check").returncode == 0 and "No new upgrade operations" in (run("check").stdout + run("check").stderr)

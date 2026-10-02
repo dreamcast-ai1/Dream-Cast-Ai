@@ -10,6 +10,8 @@ from app.providers import text as text_module
 from .conftest import PNG
 from .helpers import make_png
 
+pytestmark = pytest.mark.usefixtures("all_features")
+
 
 def project(client, h, title="The Lost Kingdom"):
     return client.post("/api/projects", json={"title": title, "genre": "Fantasy", "description": "A forgotten realm."}, headers=h).json()["id"]

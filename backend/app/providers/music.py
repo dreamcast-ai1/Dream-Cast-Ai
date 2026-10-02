@@ -32,6 +32,9 @@ class MusicProvider(SyncProvider):
         return []
 
     def validate_options(self, generator: str, options: dict, text: str = "", refs: list[dict] | None = None) -> list[str]:
+        if options.get("vocals_mode") == "Instrumental + Vocals" and not self.supports_lyrics:
+            raise ProviderError(ErrorCode.INVALID_REQUEST, "vocals unsupported",
+                                message="The configured music provider can only make instrumental music. Choose Instrumental, or ask an administrator to connect a provider that can sing.")
         d = options.get("duration_seconds")
         allowed = self.supported_durations()
         if d is not None and int(d) not in allowed:
@@ -82,7 +85,7 @@ class HuggingFaceMusicProvider(MusicProvider):
         return [d for d in DURATIONS if d <= self.s.music_max_seconds] or [DURATIONS[0]]
 
     def info(self) -> dict:
-        return {"model": self.model, "durations": self.supported_durations(), "supports_lyrics": self.supports_lyrics}
+        return {"model": self.model, "durations": self.supported_durations(), "supports_lyrics": self.supports_lyrics, "supports_vocals": self.supports_lyrics}
 
     def run(self, request: GenerationRequest) -> ProviderResult:
         if not self.is_configured():

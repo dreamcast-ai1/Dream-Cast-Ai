@@ -1,3 +1,4 @@
+import pytest
 import base64
 import json
 
@@ -6,6 +7,8 @@ import httpx
 from app.providers.voice import GoogleTTSProvider
 
 from .helpers import (MP3, WAV, generate, generate_and_run, make_project, run_all, use_llm, use_music, use_voice, used)
+
+pytestmark = pytest.mark.usefixtures("all_features")
 
 
 def refine(client, h, gen, prompt="", **kw):
@@ -141,7 +144,7 @@ def test_voice_configuration_options(client, make_user):
     f = {x["key"]: x for x in v["fields"]}
     assert f["gender"]["choices"] == ["Male", "Female"]
     assert f["accent"]["choices"] == ["Indian English", "American", "British", "Hindi", "Telugu", "Other"]
-    assert f["emotion"]["choices"] == ["Neutral", "Happy", "Sad", "Angry", "Excited", "Fearful", "Calm"]
+    assert f["emotion"]["choices"] == ["Neutral", "Happy", "Sad", "Angry", "Excited", "Calm", "Fearful", "Serious"]
     assert v["configured"] is False and "Voice provider is not configured" in v["config_message"]
     assert refine(client, h, "voice", "").status_code == 422        # text is required
 

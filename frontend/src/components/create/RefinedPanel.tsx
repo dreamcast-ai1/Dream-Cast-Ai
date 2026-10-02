@@ -7,8 +7,9 @@ export function RefinedPanel({ result, text, onText, onRegenerate, onGenerate, r
   { result: RefineResult; text: string; onText: (t: string) => void; onRegenerate: () => void; onGenerate: () => void; regenerating: boolean; generating: boolean; blockedReason: string | null; generateLabel?: string; heading?: string; maxLen?: number }) {
   const [editing, setEditing] = useState(false);
   const m = result.metadata;
-  const source = m.method === "llm" ? `Refined by ${m.provider}${m.model ? ` (${m.model})` : ""}` : m.method === "previous" ? "Loaded from a previous generation"
-    : m.method === "local" ? "Prepared locally (no AI call)" : "Built-in template (no AI refinement)";
+  // Honest labels: "AI refined" only when the AI really rewrote it; the built-in structured template is always "Basic refinement".
+  const source = m.method === "llm" ? `AI refined${m.model ? ` · ${m.model}` : ""}` : m.method === "previous" ? "Loaded from a previous generation"
+    : m.method === "none" ? "Not refined · your prompt as written" : "Basic refinement · built-in, no AI";
   return (
     <section aria-labelledby="refined-heading" className="card mt-6 p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">

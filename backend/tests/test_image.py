@@ -10,6 +10,8 @@ from app.services import subscriptions
 
 from .helpers import FakeFal, generate, make_project, run_all, use_fal
 
+pytestmark = pytest.mark.usefixtures("all_features")
+
 PROMPT = "A lone warrior at the gate of a ruined castle at sunrise."
 OPTS = {"style": "Cinematic", "aspect_ratio": "16:9"}
 
@@ -128,13 +130,13 @@ def test_image_allowance_per_plan(client, make_user, monkeypatch):
     ah, _ = make_user("boss@example.com")
     h, user = make_user()
     pid = make_project(client, h)
-    codes = [generate(client, h, "image", prompt=PROMPT, options=OPTS, project_id=pid).status_code for _ in range(9)]
-    assert codes == [201] * 8 + [429]                                            # Trailer: 8 a day
-    assert client.patch(f"/api/admin/users/{user['id']}/subscription", headers=ah, json={"plan_id": "indie", "days": 30}).status_code == 200
-    assert next(i["limit"] for i in client.get("/api/usage", headers=h).json()["items"] if i["generator"] == "image") == 32          # Indie: 4x
+    codes = [generate(client, h, "image", prompt=PROMPT, options=OPTS, project_id=pid).status_code for _ in range(31)]
+    assert codes == [201] * 30 + [429]                                           # Teaser: 30 a month
+    assert client.patch(f"/api/admin/users/{user['id']}/subscription", headers=ah, json={"plan_id": "trailer", "days": 30}).status_code == 200
+    assert next(i["limit"] for i in client.get("/api/usage", headers=h).json()["items"] if i["generator"] == "image") == 90          # Trailer: 3x
     assert generate(client, h, "image", prompt=PROMPT, options=OPTS, project_id=pid).status_code == 201
-    client.patch(f"/api/admin/users/{user['id']}/subscription", headers=ah, json={"plan_id": "blockbuster", "days": 30})
-    assert next(i["limit"] for i in client.get("/api/usage", headers=h).json()["items"] if i["generator"] == "image") == 128         # Blockbuster: 16x
+    client.patch(f"/api/admin/users/{user['id']}/subscription", headers=ah, json={"plan_id": "movie", "days": 30})
+    assert next(i["limit"] for i in client.get("/api/usage", headers=h).json()["items"] if i["generator"] == "image") == 240         # Movie: 8x
 
 
 def test_regenerate_adds_a_version_and_costs_one_credit_once(client, make_user, monkeypatch):

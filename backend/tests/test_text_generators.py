@@ -1,8 +1,11 @@
+import pytest
 import json
 
 from app.providers import registry
 
 from .helpers import (LYRICS, SCRIPT, STORY, generate, generate_and_run, llm_reply, make_project, run_all, use_llm, used)
+
+pytestmark = pytest.mark.usefixtures("all_features")
 
 
 def refine(client, h, gen, prompt="A warrior discovers a hidden kingdom.", **kw):
@@ -220,12 +223,12 @@ def test_lyrics_generation_language_and_structure(client, make_user, monkeypatch
 
 
 # ------------------------------------------------------------------ general
-def test_daily_limits_apply_to_text_generators(client, make_user, monkeypatch):
+def test_monthly_limits_apply_to_text_generators(client, make_user, monkeypatch):
     use_llm(monkeypatch)
     h, _ = make_user()
-    codes = [generate(client, h, "script").status_code for _ in range(4)]
-    assert codes == [201, 201, 201, 429]                                    # script: 3/day
-    assert [generate(client, h, "lyrics").status_code for _ in range(6)] == [201] * 5 + [429]   # lyrics: 5/day
+    codes = [generate(client, h, "script").status_code for _ in range(11)]
+    assert codes == [201] * 10 + [429]                                      # script: 10/month
+    assert [generate(client, h, "lyrics").status_code for _ in range(21)] == [201] * 20 + [429]   # lyrics: 20/month
 
 
 def test_admin_can_disable_text_provider(client, make_user, monkeypatch):

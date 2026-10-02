@@ -15,6 +15,8 @@ from app.storage import get_storage
 
 from .helpers import SCRIPT, FakeFal, generate, make_project, run_all, use_fal
 
+pytestmark = pytest.mark.usefixtures("all_features")
+
 _CLIPS: dict = {}
 
 
@@ -165,17 +167,17 @@ def test_scene_video_failure_refunds_like_any_video(client, make_user):
     assert sc["status"] == "FAILED" and sc["job"]["error_message"]
 
 
-def test_scene_video_respects_the_daily_limit_and_empty_scenes(client, make_user, monkeypatch):
+def test_scene_video_respects_the_monthly_limit_and_empty_scenes(client, make_user, monkeypatch):
     use_fal(monkeypatch, FakeFal())
     h, _ = make_user()
     pid = make_project(client, h)
     empty = client.post(f"/api/projects/{pid}/scenes", headers=h, json={}).json()
     r = client.post(f"/api/projects/{pid}/scenes/{empty['id']}/generate-video", headers=h)
     assert r.status_code == 422 and video_used(client, h) == 0                 # invalid requests cost nothing
-    s = [new_scene(client, h, pid, visual_prompt=f"Shot {i} of a knight") for i in range(4)]
+    s = [new_scene(client, h, pid, visual_prompt=f"Shot {i} of a knight") for i in range(6)]
     codes = [client.post(f"/api/projects/{pid}/scenes/{x['id']}/generate-video", headers=h).status_code for x in s]
-    assert codes == [201, 201, 201, 429]                                       # Trailer allows 3 videos a day
-    assert video_used(client, h) == 3
+    assert codes == [201] * 5 + [429]                                       # Teaser allows 5 videos a month
+    assert video_used(client, h) == 5
 
 
 # ------------------------------------------------------------------ assembly

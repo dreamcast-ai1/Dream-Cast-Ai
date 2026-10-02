@@ -14,6 +14,8 @@ from app.storage import get_storage
 from .conftest import PNG
 from .helpers import (FakeFal, generate, generate_and_run, make_png, make_project, mp4_bytes, run_all, upload_ref, use_fal, use_llm, used)
 
+pytestmark = pytest.mark.usefixtures("all_features")
+
 PROMPT = "A warrior walks slowly through an ancient city at night."
 OPTS = {"style": "Cinematic", "duration_seconds": 10, "aspect_ratio": "16:9"}
 
@@ -127,7 +129,7 @@ def test_aspect_ratio_is_mapped_not_stretched(client, make_user, monkeypatch):
 def test_multiple_versions_request_never_silently_makes_more(client, make_user):
     h, _ = make_user()
     r = refine(client, h, PROMPT + " Give me 4 versions.").json()
-    assert any("one video per generation" in w and "3 video generations remaining today" in w for w in r["metadata"]["warnings"])
+    assert any("one video per generation" in w and "5 video generations remaining this month" in w for w in r["metadata"]["warnings"])
 
 
 # ------------------------------------------------------------------ text-to-video, end to end (mocked provider)
@@ -512,11 +514,11 @@ def test_video_usage_limit_and_invalid_input_do_not_consume_allowance(client, ma
     assert generate(client, h, "video", prompt="", options=OPTS).status_code == 422
     assert generate(client, h, "video", prompt=PROMPT, options={**OPTS, "aspect_ratio": "4:3"}).status_code == 422
     assert used(client, h, "video") == 0
-    for _ in range(3):
+    for _ in range(5):
         assert generate(client, h, "video", prompt=PROMPT, options=OPTS).status_code == 201
     r = generate(client, h, "video", prompt=PROMPT, options=OPTS)
     assert r.status_code == 429 and r.json()["error"]["code"] == "QUOTA_EXCEEDED" and "Video limit" in r.json()["error"]["message"]
-    assert used(client, h, "video") == 3
+    assert used(client, h, "video") == 5
 
 
 def test_generation_history_links_video_thumbnail(client, make_user, monkeypatch):

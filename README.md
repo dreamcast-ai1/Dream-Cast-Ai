@@ -215,10 +215,10 @@ output is a text note marked `[SIMULATED OUTPUT]` (asset status `SIMULATED`, bad
 `[simulate:fail]`, `[simulate:transient]` (fails once, succeeds on retry), `[simulate:invalid]`, `[simulate:noquota]`, `[simulate:slow]` (~30 s, to test cancel),
 `[simulate:nocancel]`. Turn it off in production. With it off and no provider registered, Generate is blocked with an "isn't set up yet" message.
 
-### Usage limits (per user, per day, UTC)
-Video 3 · Music 3 · Voice 5 · Lyrics 5 · Story 5 · Script 3 · Face 3 · Avatar 3 · Interactive Avatar 12 (4× the standard allowance).
-Defined once in `generators.py`, editable at runtime by admins (Admin → Limits, stored in `app_settings`). Order on submit: authenticate → validate
-(generator, options, project ownership, references) → daily limit → provider availability/cap → create job + reserve one unit.
+### Usage limits (per user, per month, UTC)
+Teaser: Video 5 · Image 30 · Music 10 · Voice 20 · Lyrics 20 · Story 20 · Script 10 · Face 3 · Avatar 3 · Interactive Avatar 12; Trailer 3x and Movie 8x (video 15 / 40).
+Defined once in `plans.py`, editable at runtime by admins (Admin → Plans & limits, stored in `app_settings`). Order on submit: authenticate → validate
+(generator, options, project ownership, references) → plan limit → provider availability/cap → create job + reserve one unit.
 **Accounting:** a unit is reserved when the job is created and *returned* if the job never reached a provider (config/auth/invalid/quota errors, provider
 missing, cancelled while queued). It stays spent if the provider ran (including provider-side failure or a cancel after start). Retrying inside one job
 never double-counts. Admins can also disable a provider or cap it per day.
@@ -415,9 +415,11 @@ Tests mock the fal.ai queue (submit → status → result → file → cancel) a
 
 ## Phase 5 — subscriptions, Razorpay payments, movie scenes and assembly
 
-**Plans** (`backend/app/plans.py`, prices from `.env`): **Trailer** (free), **Indie** (₹199/month), **Blockbuster** (₹499/month).
-Each paid tier allows 4x the previous one's generations per day. One generated clip is at most 30 s on every plan.
-Every new user starts on Trailer, and users who existed before are moved to Trailer by the migration (nobody is charged or locked out).
+**Plans** (`backend/app/plans.py`, prices from `.env`): **Teaser** (free, 5 videos/month), **Trailer** (₹199/month, 15 videos/month), **Movie** (₹499/month, 40 videos/month).
+Allowances are **per calendar month (UTC)**; every other generator scales with the video allowance (Teaser 1x, Trailer 3x, Movie 8x) and an admin can edit any number in Admin → Plans & limits.
+One generated clip is at most 30 s on every plan. Limits are enforced on the server for every API call. Every new user starts on Teaser. Migration `0008` renames existing
+subscriptions and payments (old Trailer → Teaser, Indie → Trailer, Blockbuster → Movie) so nobody is charged, locked out or silently upgraded; old per-day admin overrides are dropped.
+Prices: `PLAN_TRAILER_PRICE_INR` / `PLAN_MOVIE_PRICE_INR` (the old `PLAN_INDIE_…` / `PLAN_BLOCKBUSTER_…` names still work). Razorpay stays in **TEST mode** unless you deliberately set live keys.
 
 **Payments (Razorpay, behind `app/payments/PaymentProvider`).**
 1. `POST /api/subscription/checkout {plan_id}` creates an order at the **server's** price and returns the public key id.
@@ -465,12 +467,31 @@ rest of the app keeps working. Groq still works: `LLM_PROVIDER=groq`.
 cost extra allowance: one Story/Script request is one unit. 400/401/403/404 are never retried. If Gemini stays overloaded the user is told it is a temporary outage on Google's
 side (not a bad key, rate limit or malformed answer); setting `LLM_MODEL` to another stable Flash model in Render is the quickest mitigation.
 
+## Admin feature controls, languages and prompt refinement
+
+**Features are switches in the database** (Admin → Features, stored in `app_settings`; no redeploy). Defaults: **on** — Video, Image, Music, Voice, Lyrics, Story, Script, AI prompt
+refinement, Basic refinement; **off** — Face Swap, AI Avatar, Interactive Avatar, Hindi, Telugu. A switched-off feature is hidden in the UI **and refused by the API**
+(`403 feature_disabled`; a disabled language gets `422 language_unavailable`), so calling an endpoint by hand does nothing. Everything already generated stays visible. Each switch
+shows its provider status (Configured / Not configured / Provider disabled): status only, never a key. Switching on a feature whose provider isn't configured shows a clear
+configuration message; nothing is faked. Only English is offered until Hindi/Telugu are enabled (the Hindi/Telugu code is kept).
+
+**Prompt refinement has two honest modes.** *AI refined* uses the shared `LLM_PROVIDER` / `LLM_API_KEY` / `LLM_MODEL`. *Basic refinement* is a built-in deterministic template
+("Create a Drama story about: … Style: … Mood: … Aspect ratio: …") that needs no key and is never described as AI. Admin switches: AI refinement, Basic refinement, Prefer AI when
+available, and Automatically fall back to Basic when AI is unavailable / disabled / over its allowance. If both modes are off the prompt is passed on as written: a user is never blocked
+from generating because refinement is unavailable. The result is labelled "AI refined", "Basic refinement" or "Not refined".
+
+**Music** defaults to *Instrumental*; *Instrumental + Vocals* is offered, but the built-in provider (MusicGen) cannot sing, so choosing it returns a clear message instead of a fake result.
+**Voice** supports Male/Female and Neutral, Happy, Sad, Angry, Excited, Calm, Fearful and Serious (the Google voice approximates emotion with speaking rate and pitch).
+
+**Optional providers:** Face Swap, AI Avatar, Interactive Avatar, Music, Voice, Image and Video each need their own key; Story, Script, Lyrics and refinement need only the LLM key. Without a key
+the feature reports it is not configured and the rest of the app keeps working.
+
 ## Images and the Library
 
 **Image generation** (Create → Image) uses fal.ai text-to-image (default `fal-ai/flux/schnell`, the cheapest model) behind the same provider
 interface as video. Set `VIDEO_PROVIDER_API_KEY` (or a separate `IMAGE_PROVIDER_API_KEY`) on the server; without a key an image request fails with a clear
 message, costs nothing and creates no fake image. Each image is stored as a real asset (file, thumbnail, width/height, prompt, model, provider job id, owner, project).
-Results created without choosing a project are saved in an automatic **Quick creations** project so a generated file is never lost. Trailer allows 8 images a day (Indie 32, Blockbuster 128).
+Results created without choosing a project are saved in an automatic **Quick creations** project so a generated file is never lost. Teaser allows 30 images a month (Trailer 90, Movie 240).
 
 **Library** (sidebar) lists everything you generated across all projects: images, videos, assembled movies, stories, scripts, music and voice, each with preview,
 title, date, status, project, duration and prompt, filterable and newest first. **History** still shows the jobs (including running and failed ones, with Retry).
@@ -533,7 +554,7 @@ Backend on **Render**, frontend on **Netlify**. Do the steps in this order: Rend
 2. **Check the server's configuration.** Sign in with an admin account (an email listed in `ADMIN_EMAILS`) and open **Admin → System**. It lists, with yes/no only and never any secret, whether email, Google, Razorpay (and whether it is *test* or *live* mode), the webhook secret, fal.ai, the database and storage are set up. Fix everything marked *Needs attention* that you plan to use. It also tells you plainly that SQLite and media on Render's free disk are temporary.
 3. **Email:** register a new account with a real inbox, enter the 6-digit code, sign in, then use *Forgot password* and open the emailed link.
 4. **Google:** *Continue with Google* with a Google account that has no DreamCast account yet, then again with one whose email already has a password account (they link).
-5. **Razorpay (TEST mode keys only):** on *Plans* press *Upgrade* on Indie, pay with Razorpay's test card, and confirm the plan changes. Register the webhook (see C above) and check the Razorpay dashboard shows deliveries answered 200.
+5. **Razorpay (TEST mode keys only):** on *Plans* press *Upgrade* on Trailer, pay with Razorpay's test card, and confirm the plan changes. Register the webhook (see C above) and check the Razorpay dashboard shows deliveries answered 200.
 6. **fal.ai:** generate **one** image and **one** 10-second video (each costs a little real money), open them in *Library*, play the video.
 7. **Movie:** create a project with two scenes, give each a clip, press *Assemble Movie*, play and download it.
 8. Log out, log in again, and confirm everything is still there. (On Render's free disk it disappears after a redeploy or restart; that is expected, see E.)

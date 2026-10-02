@@ -27,16 +27,16 @@ def test_admin_stats_users_limits(client, make_user):
 def test_usage_defaults_and_quota(client, make_user):
     h, user = make_user()
     items = {i["generator"]: i for i in client.get("/api/usage", headers=h).json()["items"]}
-    assert items["video"]["limit"] == 3 and items["video"]["used"] == 0 and len(items) == 10
+    assert items["video"]["limit"] == 5 and items["video"]["used"] == 0 and len(items) == 10
     limits = {k: v["limit"] for k, v in items.items()}
-    assert limits == {"video": 3, "image": 8, "music": 3, "voice": 5, "lyrics": 5, "story": 5, "script": 3, "face_replacement": 3,
+    assert limits == {"video": 5, "image": 30, "music": 10, "voice": 20, "lyrics": 20, "story": 20, "script": 10, "face_replacement": 3,
                       "ai_avatar": 3, "interactive_avatar": 12}
     with SessionLocal() as db:
-        for _ in range(3):
+        for _ in range(5):
             usage.record(db, user["id"], "video", provider="x")
         assert not usage.has_quota(db, user["id"], "video")
         assert usage.has_quota(db, user["id"], "music")
-    assert {i["generator"]: i for i in client.get("/api/usage", headers=h).json()["items"]}["video"]["used"] == 3
+    assert {i["generator"]: i for i in client.get("/api/usage", headers=h).json()["items"]}["video"]["used"] == 5
 
 
 def test_jobs_and_notifications_isolated(client, make_user):

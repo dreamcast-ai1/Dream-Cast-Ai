@@ -156,7 +156,7 @@ def test_register_creates_an_unverified_account_and_emails_a_code_without_a_toke
     user = db_user("new@example.com")
     assert user.email_verified is False and user.password_hash and user.password_hash != PW and user.auth_provider == "local"
     with SessionLocal() as db:
-        assert db.query(Subscription).filter_by(user_id=user.id).one().plan_id == "trailer"
+        assert db.query(Subscription).filter_by(user_id=user.id).one().plan_id == "teaser"
     [(to, subject, body)] = mail.to("new@example.com")
     assert re.search(r"code is \d{6}\.", body) and "10 minutes" in body and subject
 
@@ -408,7 +408,7 @@ def test_new_google_user_is_created_verified_and_signed_in(client, google):
     assert me["email"] == "gina@example.com" and me["name"] == "Gina Google" and me["auth_provider"] == "google" and me["email_verified"] is True
     user = db_user("gina@example.com")
     assert user.google_subject_id == "g-1001" and user.password_hash is None and user.avatar_url == "https://example.com/p.png"
-    assert client.get("/api/subscription/current", headers={"Authorization": f"Bearer {token}"}).json()["plan"]["id"] == "trailer"
+    assert client.get("/api/subscription/current", headers={"Authorization": f"Bearer {token}"}).json()["plan"]["id"] == "teaser"
     assert login(client, "gina@example.com", PW).status_code == 401                  # no password exists for this account
 
 

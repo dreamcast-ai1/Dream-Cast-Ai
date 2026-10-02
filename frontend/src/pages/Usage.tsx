@@ -9,7 +9,7 @@ export default function Usage() {
   const { data, loading, error, reload } = useAsync(() => api<{ items: UsageItem[] }>("/api/usage"));
   return (
     <div>
-      <PageHeader title="Usage" subtitle="Today — daily limits reset at midnight UTC." />
+      <PageHeader title="Usage" subtitle="Your plan's allowance for this period. Monthly limits reset at the start of each month (UTC)." />
       {loading ? <PageLoader /> : error ? <ErrorState message={error} onRetry={reload} /> : (
         <>
           <UsageList items={data!.items} />

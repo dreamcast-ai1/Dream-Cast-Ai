@@ -35,10 +35,10 @@ export default function ProjectWorkspace() {
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const { isAssetTypeEnabled } = useFeatures();
-  // Tabs of unavailable features (no provider configured) are hidden; a link to one falls back to the overview.
-  const visibleTabs = TAB_ORDER.filter((id) => { const s = SECTIONS.find((x) => x.id === id); return !s?.assetType || isAssetTypeEnabled(s.assetType); });
-  const tab = visibleTabs.includes(params.get("tab") ?? "") ? params.get("tab")! : "overview";
   const { data: project, setData, loading, error, reload } = useAsync(() => api<ProjectDetail>(`/api/projects/${projectId}`), [projectId]);
+  // Tabs of features an administrator switched off are hidden, but never when the project already holds assets of that kind: existing work stays reachable.
+  const visibleTabs = TAB_ORDER.filter((id) => { const s = SECTIONS.find((x) => x.id === id); return !s?.assetType || isAssetTypeEnabled(s.assetType) || (project?.counts[COUNT_KEY[id]] ?? 0) > 0; });
+  const tab = visibleTabs.includes(params.get("tab") ?? "") ? params.get("tab")! : "overview";
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);

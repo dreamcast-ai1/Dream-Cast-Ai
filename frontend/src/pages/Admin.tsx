@@ -6,10 +6,10 @@ import { useAuth } from "../context/AuthContext";
 import { useAsync } from "../hooks/useAsync";
 import { api, errorMessage } from "../lib/api";
 import { formatDate, timeAgo } from "../lib/format";
-import type { AdminStats, AdminUser, Job, ProviderInfo } from "../lib/types";
+import type { AdminStats, AdminUser, FeatureItem, Job, ProviderInfo } from "../lib/types";
 
-const PLAN_CHOICES: [string, string][] = [["trailer", "Trailer"], ["indie", "Indie"], ["blockbuster", "Blockbuster"]];
-const TABS = [{ id: "overview", label: "Overview" }, { id: "users", label: "Users" }, { id: "limits", label: "Limits" },
+const PLAN_CHOICES: [string, string][] = [["teaser", "Teaser"], ["trailer", "Trailer"], ["movie", "Movie"]];
+const TABS = [{ id: "overview", label: "Overview" }, { id: "features", label: "Features" }, { id: "users", label: "Users" }, { id: "limits", label: "Plans & limits" },
   { id: "jobs", label: "Failed jobs" }, { id: "providers", label: "Providers" }, { id: "system", label: "System" }];
 
 interface SystemItem { id: string; label: string; ok: boolean; detail: string }
@@ -52,7 +52,7 @@ function Users() {
   const [err, setErr] = useState("");
   const setPlan = async (u: AdminUser, plan_id: string) => {      // manual grant for demos/support: not a payment
     setErr("");
-    try { await api(`/api/admin/users/${u.id}/subscription`, { method: "PATCH", json: { plan_id, days: plan_id === "trailer" ? undefined : 30 } }); await reload(); }
+    try { await api(`/api/admin/users/${u.id}/subscription`, { method: "PATCH", json: { plan_id, days: plan_id === "teaser" ? undefined : 30 } }); await reload(); }
     catch (e) { setErr(errorMessage(e)); }
   };
   const patch = async (u: AdminUser, body: { is_active?: boolean; role?: string }) => {
@@ -92,8 +92,44 @@ function Users() {
   );
 }
 
+const STATUS_TEXT: Record<string, string> = { configured: "Configured", not_configured: "Not configured", disabled: "Provider disabled" };
+const GROUPS: [FeatureItem["kind"], string, string][] = [["generator", "Generators", "Switched-off generators disappear from Create and are refused by the API. Everything already created stays available."],
+  ["language", "Languages", "English is always available."], ["refinement", "Prompt refinement", "AI refinement uses the configured text provider. Basic refinement is built in, never claims to be AI and needs no key."]];
+
+/** Feature switches stored in the database: no code change or redeploy is needed. Provider status shows configuration only, never a key. */
+function Features() {
+  const { data, setData, loading, error, reload } = useAsync(() => api<{ features: FeatureItem[] }>("/api/admin/features"));
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState("");
+  if (loading) return <PageLoader />;
+  if (error || !data) return <ErrorState message={error ?? "Could not load features."} onRetry={reload} />;
+  const toggle = async (f: FeatureItem) => {
+    setErr(""); setBusy(f.id);
+    try { setData(await api<{ features: FeatureItem[] }>("/api/admin/features", { method: "PUT", json: { features: { [f.id]: !f.enabled } } })); }
+    catch (e) { setErr(errorMessage(e)); } finally { setBusy(""); }
+  };
+  return (
+    <div className="space-y-6">
+      {err && <Alert kind="error">{err}</Alert>}
+      {GROUPS.map(([kind, title, hint]) => (
+        <section key={kind} aria-label={title}>
+          <h2 className="text-lg font-semibold">{title}</h2><p className="mb-3 text-sm text-muted">{hint}</p>
+          <ul className="grid gap-3 sm:grid-cols-2">{data.features.filter((f) => f.kind === kind).map((f) => (
+            <li key={f.id} className="card flex items-start justify-between gap-3 p-4 text-sm">
+              <div className="min-w-0"><p className="font-medium">{f.label} <span className="text-xs font-normal text-muted">· {f.enabled ? "On" : "Off"}{f.enabled !== f.default ? " (changed from default)" : ""}</span></p>
+                <p className="text-xs text-muted">{f.description}</p>
+                {f.provider && <p className={`mt-1 flex items-center gap-1.5 text-xs ${f.provider.status === "configured" ? "text-success" : "text-warn"}`}><span aria-hidden className={`h-2 w-2 rounded-full ${f.provider.status === "configured" ? "bg-success" : "bg-warn"}`} />{STATUS_TEXT[f.provider.status]}{f.provider.message ? ` — ${f.provider.message}` : ""}</p>}</div>
+              <button role="switch" aria-checked={f.enabled} aria-label={`${f.label} ${f.enabled ? "on" : "off"}`} disabled={busy === f.id} onClick={() => toggle(f)}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${f.enabled ? "bg-accent" : "bg-raised border border-border"}`}>
+                <span aria-hidden className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${f.enabled ? "left-5" : "left-0.5"}`} /></button>
+            </li>))}</ul>
+        </section>))}
+    </div>
+  );
+}
+
 function Limits() {
-  const [plan, setPlan] = useState("trailer");
+  const [plan, setPlan] = useState("teaser");
   const { data, loading, error, reload } = useAsync(() => api<{ plan: string; plans: { id: string; name: string }[]; items: { generator: string; label: string; emoji: string; limit: number }[] }>(`/api/admin/limits?plan=${plan}`), [plan]);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<{ kind: "success" | "error"; text: string } | null>(null);
@@ -174,9 +210,9 @@ export default function Admin() {
   const tab = TABS.some((t) => t.id === params.get("tab")) ? params.get("tab")! : "overview";
   return (
     <div>
-      <PageHeader title="Admin" subtitle="Manage users, limits and system health." />
+      <PageHeader title="Admin" subtitle="Manage features, users, plans and system health." />
       <Tabs label="Admin sections" tabs={TABS} active={tab} onChange={(id) => setParams({ tab: id }, { replace: true })} />
-      <TabPanel id={tab}>{tab === "overview" && <Overview />}{tab === "users" && <Users />}{tab === "limits" && <Limits />}{tab === "jobs" && <FailedJobs />}{tab === "providers" && <Providers />}{tab === "system" && <System />}</TabPanel>
+      <TabPanel id={tab}>{tab === "overview" && <Overview />}{tab === "features" && <Features />}{tab === "users" && <Users />}{tab === "limits" && <Limits />}{tab === "jobs" && <FailedJobs />}{tab === "providers" && <Providers />}{tab === "system" && <System />}</TabPanel>
     </div>
   );
 }

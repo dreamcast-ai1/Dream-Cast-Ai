@@ -89,6 +89,9 @@ def script(client, h, **kw):
     return client.post("/api/text/script", headers=h, json={"story": STORY, **kw})
 
 
+pytestmark = pytest.mark.usefixtures("all_features")
+
+
 def used(client, h, gen):
     return next(i["used"] for i in client.get("/api/usage", headers=h).json()["items"] if i["generator"] == gen)
 
@@ -104,7 +107,7 @@ def test_story_comes_back_structured_from_gemini(client, make_user, gemini):
     assert d["setting"].startswith("A small fishing harbour") and [c["name"] for c in d["characters"]] == ["Mara", "Tomas"] and d["characters"][0]["description"]
     assert d["beginning"].startswith("Mara lives") and d["middle"].startswith("The storm bells") and d["climax"].startswith("Mara climbs") and d["ending"].startswith("By dawn")
     assert d["full_story"].startswith("Mara had lived") and d["full_story"].count("\n\n") == 2 and d["word_count"] > 30
-    assert d["language"] == "English" and d["genre"] == "Drama" and d["tone"] == "Inspirational" and d["model"] == "gemini-3.5-flash-lite" and d["saved"] is None and d["remaining"] == 4
+    assert d["language"] == "English" and d["genre"] == "Drama" and d["tone"] == "Inspirational" and d["model"] == "gemini-3.5-flash-lite" and d["saved"] is None and d["remaining"] == 19
     assert set(d) == {"kind", "title", "logline", "setting", "characters", "beginning", "middle", "climax", "ending", "full_story", "text", "word_count", "language",
                       "genre", "tone", "saved", "model", "remaining"}
     assert d["text"].startswith("TITLE: The Lantern Keeper\nLOGLINE:") and "ACT 1: Mara lives" in d["text"] and "FULL STORY\nMara had lived" in d["text"]       # editable plain text
@@ -237,7 +240,7 @@ def test_script_is_generated_from_the_story_and_returned_in_a_clean_structure(cl
     r = script(client, h, style="Cinematic", tone="Dramatic", script_format="Narrated video (voice-over)", duration_minutes=10, language="English")
     assert r.status_code == 200, r.text
     d = r.json()
-    assert d["kind"] == "script" and d["title"] == "The Lantern Keeper" and d["scene_count"] == 3 == len(d["scenes"]) and d["remaining"] == 2
+    assert d["kind"] == "script" and d["title"] == "The Lantern Keeper" and d["scene_count"] == 3 == len(d["scenes"]) and d["remaining"] == 9
     assert d["characters"] == [{"name": "Mara", "description": "sixteen, brave, knows the lighthouse"}, {"name": "Old Pedro", "description": "harbourmaster"}]
     assert d["style"] == "Cinematic" and d["script_format"] == "Narrated video (voice-over)" and d["duration_minutes"] == 10 and d["tone"] == "Dramatic"
     s1, s2, s3 = d["scenes"]
@@ -328,21 +331,21 @@ def test_api_keys_never_appear_in_any_response(client, make_user, gemini):
     assert KEY not in "\n".join(texts)
 
 
-def test_the_same_daily_allowance_as_the_queued_generators_applies(client, make_user, gemini):
+def test_the_same_monthly_allowance_as_the_queued_generators_applies(client, make_user, gemini):
     gemini(chat(STORY_JSON))
     h, _ = make_user()
-    assert [story(client, h).status_code for _ in range(6)] == [200] * 5 + [429] and used(client, h, "story") == 5               # Trailer: 5 stories a day
+    assert [story(client, h).status_code for _ in range(21)] == [200] * 20 + [429] and used(client, h, "story") == 20               # Teaser: 20 stories a month
     r = story(client, h)
     assert r.json()["error"]["code"] == "QUOTA_EXCEEDED" and "Story limit" in r.json()["error"]["message"]
     gemini(chat(SCRIPT_JSON))
-    assert [script(client, h).status_code for _ in range(4)] == [200, 200, 200, 429]   # Trailer: 3 scripts a day
+    assert [script(client, h).status_code for _ in range(11)] == [200] * 10 + [429]   # Teaser: 10 scripts a month
 
 
 def test_a_queued_story_and_a_studio_story_share_one_allowance(client, make_user, gemini):
     from .helpers import generate
     gemini(chat(STORY_JSON))
     h, _ = make_user()
-    for _ in range(4):
+    for _ in range(19):
         assert generate(client, h, "story", prompt="A young engineer finds a hidden city.", project_id=make_project(client, h)).status_code == 201
     assert story(client, h).status_code == 200 and story(client, h).status_code == 429
 

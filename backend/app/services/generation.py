@@ -10,7 +10,7 @@ from ..generators import BY_ID, canonical_generator
 from ..models import GeneratedAsset, GenerationJob, Project, ReferenceAsset, User
 from ..providers import ProviderError
 from . import context as ctx_service
-from . import jobs, provider_settings, subscriptions, usage
+from . import features, jobs, provider_settings, subscriptions, usage
 from .generation_schema import AUX_KEYS, SPECS, normalize_options, validate_prompt
 
 MAX_REFINED = 8000
@@ -55,9 +55,11 @@ def prepare(db: Session, user: User, generator_type: str, prompt: str, options: 
     generator = canonical_generator(generator_type)
     if not generator:
         raise AppError("Unsupported generator type.", 400, "unsupported_generator")
+    features.require_generator(db, generator)               # disabled features are refused here, whatever the UI shows
     spec = SPECS[generator]
     project = owned_project_or_404(db, user, project_id)
     clean, warnings = normalize_options(generator, options, prompt or "", strict=strict)
+    features.check_languages(db, clean)
     prompt = validate_prompt(generator, prompt, clean)
     plan_notes = _check_plan_entitlements(db, user, generator, clean, strict)      # first: a plan limit beats input details
     refs: list[ReferenceAsset] = []
@@ -126,7 +128,7 @@ def _variations_note(db: Session, user: User, generator: str, prompt: str) -> li
     label = BY_ID[generator].label.lower()
     left = usage.remaining(db, user.id, generator)
     return [f"DreamCast creates one {label} per generation, so this makes one. You have {left} {label} generation{'s' if left != 1 else ''} "
-            f"remaining today; generate again for another version."]
+            f"remaining this month; generate again for another version."]
 
 
 def _validate_asset_refs(db: Session, project: Project | None, options: dict) -> None:
@@ -167,7 +169,7 @@ def build_context(db: Session, prep: Prepared, full: bool = False) -> dict:
 def check_can_submit(db: Session, user: User, generator: str):
     """Order matters: usage limit first (cheap, user-facing), then provider availability."""
     if not usage.has_quota(db, user.id, generator):
-        raise AppError(f"You've reached today's {BY_ID[generator].label} limit. It resets at midnight UTC.", 429, "QUOTA_EXCEEDED")
+        raise AppError(f"You've reached your {BY_ID[generator].label} limit for this plan. It resets at the start of next month (UTC); upgrade for a bigger allowance.", 429, "QUOTA_EXCEEDED")
     try:
         return provider_settings.select_provider(db, generator, allow_unconfigured=True)
     except ProviderError as e:

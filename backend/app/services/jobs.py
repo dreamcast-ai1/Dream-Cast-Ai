@@ -37,7 +37,7 @@ def create_job(db: Session, user_id: str, generator: str, *, project_id: str | N
         raise AppError("Unknown generator type.", 400)
     with _QUOTA_LOCK:        # check + reserve as one step, so simultaneous requests can't both pass the check and overspend the allowance
         if not usage.has_quota(db, user_id, generator):
-            raise AppError("You have reached today's limit for this generator.", 429, ErrorCode.QUOTA_EXCEEDED.value)
+            raise AppError("You have reached your limit for this generator on your current plan.", 429, ErrorCode.QUOTA_EXCEEDED.value)
         job = GenerationJob(user_id=user_id, project_id=project_id, type=generator, original_prompt=original_prompt,
                             refined_prompt=refined_prompt, options=options or {}, reference_assets=reference_assets or [],
                             context=context or {}, provider=provider, parent_id=parent_id, input_meta=input_meta or {})

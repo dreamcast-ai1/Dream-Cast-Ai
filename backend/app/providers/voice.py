@@ -61,7 +61,7 @@ class VoiceProvider(SyncProvider):
 
 # emotion -> (speaking rate, pitch in semitones). Google has no emotion control, so prosody is the honest approximation.
 EMOTION_PROSODY = {"Neutral": (1.0, 0.0), "Happy": (1.06, 2.0), "Sad": (0.88, -3.0), "Angry": (1.10, 1.0), "Excited": (1.16, 3.0),
-                   "Fearful": (1.12, 2.5), "Calm": (0.93, -1.0)}
+                   "Fearful": (1.12, 2.5), "Calm": (0.93, -1.0), "Serious": (0.95, -1.5)}
 GOOGLE_VOICES = {
     ("en-IN", "Female"): "en-IN-Neural2-A", ("en-IN", "Male"): "en-IN-Neural2-B",
     ("en-US", "Female"): "en-US-Neural2-F", ("en-US", "Male"): "en-US-Neural2-D",

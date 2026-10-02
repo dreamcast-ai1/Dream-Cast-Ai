@@ -1,8 +1,11 @@
+import pytest
 import base64
 import json
 
 from app.config import get_settings
 from .helpers import FakeFal, make_png, make_project, mp4_bytes, run_all, upload_ref, use_fal, use_llm, used
+
+pytestmark = pytest.mark.usefixtures("all_features")
 
 
 def refine(client, h, gen="face_replacement", prompt="", **kw):

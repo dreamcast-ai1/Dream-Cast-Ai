@@ -17,6 +17,8 @@ from app.storage import get_storage
 from .helpers import make_project
 from .test_movie import clip_bytes, give_clip, movie_assets, new_scene, state
 
+pytestmark = pytest.mark.usefixtures("all_features")
+
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -110,7 +112,7 @@ def test_user_facing_messages_for_common_failures(client, make_user):
     assert client.get("/api/admin/stats", headers=h).json()["error"]["code"] == "forbidden"
     r = client.post("/api/generations", headers=h, json={"generator_type": "video", "original_prompt": "x", "refined_prompt": "x", "options": {"duration_seconds": 45}})
     assert r.status_code == 422 and "30 seconds" in r.json()["error"]["message"]
-    r = client.post("/api/subscription/checkout", headers=h, json={"plan_id": "indie"})          # no gateway keys here
+    r = client.post("/api/subscription/checkout", headers=h, json={"plan_id": "trailer"})          # no gateway keys here
     assert r.status_code == 503 and "aren't available" in r.json()["error"]["message"]
     r = client.post("/api/subscription/verify", headers=h, json={"razorpay_order_id": "o", "razorpay_payment_id": "p", "razorpay_signature": "s"})
     assert r.status_code == 404 and r.json()["error"]["message"]

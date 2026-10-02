@@ -14,7 +14,7 @@ export function UsageList({ items, compact }: { items: UsageItem[]; compact?: bo
               <span className="font-medium"><span aria-hidden>{u.emoji}</span> {u.label}</span>
               <span className={full ? "text-danger" : "text-muted"}>{u.used} / {u.limit}{u.remaining !== undefined ? ` · ${u.remaining} left` : ""}</span>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-raised" role="progressbar" aria-label={`${u.label} usage today`} aria-valuemin={0} aria-valuemax={u.limit} aria-valuenow={u.used}>
+            <div className="h-1.5 overflow-hidden rounded-full bg-raised" role="progressbar" aria-label={`${u.label} usage this period`} aria-valuemin={0} aria-valuemax={u.limit} aria-valuenow={u.used}>
               <div className={`h-full rounded-full ${full ? "bg-danger" : "bg-accent"}`} style={{ width: `${pct}%` }} />
             </div>
           </li>

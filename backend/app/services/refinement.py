@@ -59,22 +59,45 @@ def _options_line(options: dict) -> str:
     return "; ".join(parts)
 
 
+NOUNS = {"video": "video", "image": "image", "music": "music track", "voice": "voice-over", "lyrics": "set of song lyrics", "story": "story",
+         "script": "screenplay", "face_replacement": "face replacement", "ai_avatar": "avatar video", "interactive_avatar": "avatar conversation"}
+# Option key -> line label, in the order the lines are written.
+OPTION_LINES = [("style", "Style"), ("mood", "Mood"), ("tone", "Tone"), ("emotion", "Delivery"), ("gender", "Voice"), ("accent", "Accent"),
+                ("vocals_mode", "Vocals"), ("language", "Language"), ("length", "Length"), ("target_minutes", "Target length"),
+                ("aspect_ratio", "Aspect ratio"), ("duration_seconds", "Duration"), ("method", "Method")]
+GUIDANCE = {"image": "Composition: describe subject, setting, framing, lighting and colours clearly; show only what was asked.",
+            "video": "Visual direction: describe subject, action, environment, camera movement, lighting and motion clearly; stay within the scene requested.",
+            "music": "Musical direction: genre, mood, instruments, energy, tempo and how the piece develops.",
+            "voice": "Delivery: speak the text exactly as written.",
+            "story": "Structure: a clear beginning, middle, climax and ending; no unrequested plot elements.",
+            "script": "Structure: standard scene headings, action, dialogue and camera notes; keep to the requested scenes.",
+            "lyrics": "Structure: verses and a chorus that follow the theme and mood."}
+
+
 def template_refine(generator: str, prompt: str, options: dict, context: dict, adjustments: list[str] | None = None) -> str:
-    """Deterministic fallback: structures what the user gave without inventing anything."""
-    label = generator.replace("_", " ").title()
-    lines = [f"{label} request: {prompt.strip() or '(no description; use the options below)'}"]
-    if opts := _options_line(options):
-        lines.append(f"Requirements: {opts}." + (" " + " ".join(adjustments) if adjustments else ""))
+    """Basic (non-AI) refinement. Deterministic: it only arranges what the user gave, in a clearer structure, and invents nothing."""
+    def value(key):
+        v = options.get(key)
+        if v in (None, ""):
+            return None
+        custom = options.get(f"{key}_custom")
+        return str(custom) if v == "Custom" and custom else str(v)
+
+    genre, noun = value("genre"), NOUNS.get(generator, generator.replace("_", " "))
+    subject = prompt.strip() or "the idea described by the options below"
+    lines = [f"Create a {(genre + ' ') if genre else ''}{noun} about: {subject}"]
+    for key, label in OPTION_LINES:
+        v = value(key)
+        if v:
+            lines.append(f"{label}: {v} seconds" if key == "duration_seconds" else f"{label}: {v}")
+    if (ids := options.get("character_ids")) and isinstance(ids, list):
+        lines.append(f"Important elements: {len(ids)} selected character(s) from the project.")
     if ctx := ctx_service.context_text(context):
         lines.append("Project context:\n" + ctx)
-    guidance = {"image": "Describe subject, setting, composition, lighting, colours, mood and style clearly; keep to the image requested.",
-                "video": "Describe subject, action, environment, camera, lighting, style, motion and composition clearly; stay within the scene requested.",
-                "music": "Specify genre, mood, instrumentation, energy, tempo and atmosphere.",
-                "voice": "Speak the text exactly as written with the requested delivery.",
-                "story": "Keep to the requested premise and tone; do not add unrequested plot elements.",
-                "script": "Use standard scene structure with dialogue and visual direction; keep to the requested scenes."}.get(generator)
-    if guidance:
-        lines.append(guidance)
+    if guide := GUIDANCE.get(generator):
+        lines.append(guide)
+    if adjustments:
+        lines.append(" ".join(adjustments))
     return "\n".join(lines)
 
 
@@ -82,7 +105,7 @@ _VOICE_WRAPPER = re.compile(r"^\s*(?:please\s+)?(?:say|read|speak|narrate|voice)
                             re.I | re.S)
 _EMOTION_WORDS = {"calm": "Calm", "peaceful": "Calm", "happy": "Happy", "cheerful": "Happy", "joyful": "Happy", "sad": "Sad", "sorrowful": "Sad",
                   "angry": "Angry", "furious": "Angry", "excited": "Excited", "energetic": "Excited", "fear": "Fearful", "scared": "Fearful",
-                  "afraid": "Fearful", "neutral": "Neutral"}
+                  "afraid": "Fearful", "neutral": "Neutral", "serious": "Serious", "stern": "Serious"}
 
 
 def refine_voice(prompt: str, options: dict, extra_warnings: list[str]) -> RefinementResult:
@@ -100,7 +123,7 @@ def refine_voice(prompt: str, options: dict, extra_warnings: list[str]) -> Refin
                 notes.append(f"Emotion set to {emotion} from your instructions.")
     notes.append("Voice requests skip AI rewriting: the text below is exactly what will be spoken.")
     structured = {"generator": "voice", "user_request": prompt, "options": opts, "context": {}, "constraints": "spoken text kept verbatim"}
-    return RefinementResult(text, structured, {"method": "local", "provider": None, "model": None, "warnings": notes, "options": opts,
+    return RefinementResult(text, structured, {"method": "local", "label": "Basic refinement", "provider": None, "model": None, "warnings": notes, "options": opts,
                                                "context_used": {}})
 
 
@@ -108,7 +131,7 @@ def refine_face(prompt: str, options: dict, extra_warnings: list[str]) -> Refine
     """Face replacement is refined locally: the models take images, not creative prompts, so an LLM call would be wasted."""
     text = prompt.strip() or "Replace the face in the source with the supplied face image, matching lighting, angle and skin tone."
     structured = {"generator": "face_replacement", "user_request": prompt, "options": options, "context": {}, "constraints": "images only"}
-    return RefinementResult(text, structured, {"method": "local", "provider": None, "model": None, "options": options, "context_used": {},
+    return RefinementResult(text, structured, {"method": "local", "label": "Basic refinement", "provider": None, "model": None, "options": options, "context_used": {},
                                                "warnings": [*extra_warnings, "Face replacement skips AI rewriting: your note is saved with the request."]})
 
 
@@ -122,8 +145,13 @@ def _enforce_duration(text: str, options: dict) -> str:
     return text
 
 
+LABELS = {"llm": "AI refined", "template": "Basic refinement", "local": "Basic refinement", "none": "Not refined"}
+
+
 def refine(generator: str, prompt: str, options: dict, context: dict, *, extra_warnings: list[str] | None = None,
-           use_llm: bool = True) -> RefinementResult:
+           use_llm: bool = True, basic: bool = True, fallback_on_error: bool = True, skip_reason: str | None = None) -> RefinementResult:
+    """use_llm: AI may be used for this request. basic: the built-in structured template may be used. fallback_on_error: use the
+    template if the AI call fails. skip_reason: why AI was not used (shown to the user). The result is always labelled honestly."""
     if generator == "voice":
         return refine_voice(prompt, options, list(extra_warnings or []))
     if generator == "face_replacement":
@@ -148,18 +176,21 @@ def refine(generator: str, prompt: str, options: dict, context: dict, *, extra_w
             refined = provider.complete(system, user, max_tokens=max_words * 3)
             method, model = "llm", provider.model
         except ProviderError as e:
-            log.warning("LLM refinement failed (%s: %s); using template", e.code.value, e.detail)
-            if e.code == ErrorCode.AUTHENTICATION_ERROR:
-                warnings.append("The prompt-refinement AI rejected its API key, so a built-in template was used instead.")
-            else:
-                warnings.append("The prompt-refinement AI is unavailable right now, so a built-in template was used instead.")
+            log.warning("LLM refinement failed (%s: %s)", e.code.value, e.detail)
+            basic = basic and fallback_on_error
+            what = "rejected its API key" if e.code == ErrorCode.AUTHENTICATION_ERROR else "is unavailable right now"
+            warnings.append(f"The prompt-refinement AI {what}, so " + ("basic (non-AI) refinement was used instead." if basic else "your prompt was left as written."))
     elif not use_llm:
-        warnings.append("Your daily AI prompt-refinement allowance is used up, so a built-in template was used instead.")
+        warnings.append((skip_reason or "AI prompt refinement wasn't used for this request.") + (" Basic (non-AI) refinement was used instead." if basic else " Your prompt was left as written."))
     else:
-        warnings.append("No prompt-refinement AI is configured, so a built-in template was used. See the README to add a free LLM key.")
-    if not refined:
+        warnings.append("No prompt-refinement AI is configured, so " + ("basic (non-AI) refinement was used. See the README to add a free LLM key." if basic
+                                                                      else "your prompt was left as written."))
+    if not refined and basic:
         refined = template_refine(generator, prompt, options, context, extra_warnings)
+        method = "template"
+    elif not refined:
+        refined, method = prompt.strip() or template_refine(generator, prompt, options, context, extra_warnings), "none"
     refined = _enforce_duration(refined, options)
     return RefinementResult(refined.strip(), structured, {
-        "method": method, "provider": provider.name if method == "llm" else None, "model": model,
+        "method": method, "label": LABELS[method], "provider": provider.name if method == "llm" else None, "model": model,
         "warnings": warnings, "options": options, "context_used": ctx_service.summarize(context)})

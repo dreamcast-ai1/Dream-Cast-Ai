@@ -6,7 +6,7 @@ import type { CurrentSubscription, UsageItem } from "../lib/types";
 import { UsageList } from "./UsageList";
 import { ErrorState, PageLoader, StatusBadge } from "./ui/feedback";
 
-/** Current plan, subscription status, renewal/expiry and what's left today. Used in Settings -> Plan. */
+/** Current plan, subscription status, renewal/expiry and what's left this period. Used in Settings -> Plan. */
 export function PlanSummary() {
   const sub = useAsync(() => api<CurrentSubscription>("/api/subscription/current"));
   const use = useAsync(() => api<{ period: string; resets_at: string; items: UsageItem[] }>("/api/subscription/usage"));
@@ -28,7 +28,7 @@ export function PlanSummary() {
           <div><dt className="text-muted">{plan.price_minor === 0 ? "Renewal" : "Renews / expires"}</dt><dd className="mt-0.5 font-medium">{s.expires_at ? formatDate(s.expires_at) : plan.price_minor === 0 ? "Free — no expiry" : "No end date"}</dd></div>
           <div><dt className="text-muted">Allowance resets</dt><dd className="mt-0.5 font-medium">{period === "day" ? "Daily, midnight UTC" : `Monthly, ${formatDate(use.data!.resets_at)}`}</dd></div>
         </dl>
-        {downgraded && <p className="mt-3 text-sm text-muted">Your {titleCase(s.plan_id)} subscription is {s.status === "ACTIVE" ? "past its end date" : s.status.toLowerCase()}, so the free Trailer allowance applies.</p>}
+        {downgraded && <p className="mt-3 text-sm text-muted">Your {titleCase(s.plan_id)} subscription is {s.status === "ACTIVE" ? "past its end date" : s.status.toLowerCase()}, so the free Teaser allowance applies.</p>}
         {s.payment_provider === "admin" && <p className="mt-3 text-xs text-muted">This plan was granted by an administrator (no payment).</p>}
       </section>
       <section aria-label="Usage"><h2 className="mb-3 text-lg font-semibold">Usage and remaining generations</h2><UsageList items={use.data!.items} /></section>

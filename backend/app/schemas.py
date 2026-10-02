@@ -252,7 +252,7 @@ class AdminUserPatch(BaseModel):
 
 class LimitsIn(BaseModel):
     limits: dict[str, int]
-    plan: str = "trailer"
+    plan: str = "teaser"
 
 
 class SubscriptionPatch(BaseModel):
@@ -289,3 +289,7 @@ class ProviderPatch(BaseModel):
     enabled: bool | None = None
     daily_cap: int | None = Field(default=None, ge=0, le=100000)
     clear_cap: bool = False
+
+
+class FeaturesIn(BaseModel):
+    features: dict[str, bool]

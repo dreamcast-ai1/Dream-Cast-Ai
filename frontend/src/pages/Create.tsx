@@ -147,7 +147,7 @@ export default function Create() {
   const promptTooShort = !!selected && selected.prompt.required && !isImageVideo && prompt.trim().length < 3;
   const musicEmpty = selected?.id === "music" && !prompt.trim() && !options.genre && !options.mood;
   const refineDisabled = busy !== "" || !selected || promptTooShort || musicEmpty || needsFace || needsImage;
-  const blocked = face && !permission ? "Confirm that you have permission to use the uploaded face/image to continue." : !selected?.available ? selected?.unavailable_reason ?? "This generator isn't available." : remaining && remaining.used >= remaining.limit ? `You've used all ${remaining.limit} ${selected?.label} generations for today. The limit resets at midnight UTC.` : null;
+  const blocked = face && !permission ? "Confirm that you have permission to use the uploaded face/image to continue." : !selected?.available ? selected?.unavailable_reason ?? "This generator isn't available." : remaining && remaining.used >= remaining.limit ? `You've used all ${remaining.limit} ${selected?.label} generations for this period. Upgrade your plan or wait for the allowance to reset.` : null;
   const sceneChip = options.scene_number && options.script_asset_id ? `Scene ${options.scene_number} of your script is used as context` : "";
   const isVoice = selected?.id === "voice";
 
@@ -209,7 +209,7 @@ export default function Create() {
             {selected.note && <p className="flex items-start gap-2 text-sm text-muted"><Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />{selected.note}</p>}
             {error && !refined && <Alert kind="error">{error}</Alert>}
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs text-muted">{remaining ? `${remaining.used} / ${remaining.limit} ${selected.label} generations used today` : ""}</p>
+              <p className="text-xs text-muted">{remaining ? `${remaining.used} / ${remaining.limit} ${selected.label} generations used this period` : ""}</p>
               <button className="btn-primary w-full sm:w-auto" onClick={refine} disabled={refineDisabled}>{busy === "refine" ? <Spinner /> : <Wand2 className="h-4 w-4" aria-hidden />} {isVoice || face ? "Prepare request" : "Refine prompt"}</button>
             </div>
             {needsFace && <p className="text-xs text-muted">Choose a source and a face to continue.</p>}

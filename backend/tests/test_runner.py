@@ -1,3 +1,4 @@
+import pytest
 import threading
 import time
 
@@ -7,6 +8,8 @@ from app.services import jobs, runner
 from app.services.worker import WorkerPool
 
 from .test_generation import generate, project
+
+pytestmark = pytest.mark.usefixtures("all_features")
 
 
 def run_all():

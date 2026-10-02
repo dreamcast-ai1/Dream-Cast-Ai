@@ -35,7 +35,7 @@ export interface GeneratorSchema extends Generator {
 }
 export interface RefineResult {
   refined_prompt: string; structured_prompt: Record<string, unknown>;
-  metadata: { method: "llm" | "template" | "previous" | "local"; provider: string | null; model: string | null; warnings: string[]; options: Record<string, unknown>; context_used: Record<string, unknown> };
+  metadata: { method: "llm" | "template" | "previous" | "local" | "none"; label?: string; provider: string | null; model: string | null; warnings: string[]; options: Record<string, unknown>; context_used: Record<string, unknown> };
 }
 export interface Notification { id: string; type: string; title: string; message: string; is_read: boolean; job_id: string | null; project_id: string | null; asset_id: string | null; created_at: string }
 export interface Generator { id: string; label: string; emoji: string; description: string; section: string; available: boolean }
@@ -64,7 +64,7 @@ export interface MovieState {
   missing: string[]; can_assemble: boolean; total_seconds: number;
   active_job: { id: string; status: string; stage: string } | null; movie: Asset | null;
 }
-export interface TextOptions {
+export interface TextOptions { generators?: Record<string, boolean>;
   genres: string[]; tones: string[]; languages: string[]; lengths: string[]; script_styles: string[]; script_formats: string[]; durations: number[]; configured: boolean;
   limits: { prompt: number; story: number; instructions: number; genre: number; tone: number; style: number; language: number };
 }
@@ -82,3 +82,6 @@ export interface ScriptResult {
   kind: "script"; title: string; logline: string; characters: TextCharacter[]; scenes: ScriptScene[]; scene_count: number; estimated_total_seconds: number; text: string;
   word_count: number; language: string; style: string; tone: string; script_format: string; duration_minutes: number | null; saved: SavedText | null; model: string; remaining: number;
 }
+
+export interface FeatureItem { id: string; label: string; description: string; kind: "generator" | "language" | "refinement"; enabled: boolean; default: boolean;
+  provider: { status: "configured" | "not_configured" | "disabled"; provider: string | null; message?: string } | null }

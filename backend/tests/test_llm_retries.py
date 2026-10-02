@@ -14,6 +14,7 @@ from app.providers import text as text_module
 from .helpers import generate, make_project, run_all
 from .test_text_studio import KEY, SCRIPT_JSON, STORY_JSON, chat, gemini, script, story, used  # noqa: F401  (gemini is a fixture)
 
+pytestmark = pytest.mark.usefixtures("all_features")
 UNAVAILABLE = httpx.Response  # (alias for readability in the parametrisations below)
 
 
@@ -173,11 +174,11 @@ def test_a_transient_failure_plus_a_malformed_answer_still_cost_one_unit(client,
     assert usage_rows("story") == [("SUCCEEDED", 1)]
 
 
-def test_retries_never_let_a_user_exceed_the_daily_limit(client, make_user, gemini, waits):
+def test_retries_never_let_a_user_exceed_the_monthly_limit(client, make_user, gemini, waits):
     gemini(res(503), chat(STORY_JSON), res(503), chat(STORY_JSON))
     h, _ = make_user()
-    assert [story(client, h).status_code for _ in range(5)] == [200] * 5
-    assert story(client, h).status_code == 429 and used(client, h, "story") == 5          # exactly the 5 a day, not 10
+    assert [story(client, h).status_code for _ in range(20)] == [200] * 20
+    assert story(client, h).status_code == 429 and used(client, h, "story") == 20          # exactly the 20 a month, not 40
 
 
 def test_script_requests_retry_the_same_way(client, make_user, gemini, waits):

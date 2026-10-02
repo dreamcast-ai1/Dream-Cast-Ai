@@ -18,6 +18,8 @@ from .test_auth_flows import login, mail, register, verify  # noqa: F401  (mail 
 from .test_billing import checkout, gateway, verify as verify_payment  # noqa: F401  (gateway is a fixture)
 from .test_object_storage import fake_s3, s3_app  # noqa: F401  (fixtures)
 
+pytestmark = pytest.mark.usefixtures("all_features")
+
 PW = "correct-horse-1"
 
 
@@ -64,7 +66,7 @@ def full_flow(client, mail, gateway, monkeypatch):
     assert client.post(f"/api/projects/{pid}/movie/assemble", headers=h).status_code == 202
     run_all()
     # 9  a subscription paid through the (mock) gateway
-    order = checkout(client, h, "indie").json()["order_id"]
+    order = checkout(client, h, "trailer").json()["order_id"]
     assert verify_payment(client, h, order, "pay_persist").status_code == 200
     snapshot = {"usage": usage(client, h), "library": [(i["id"], i["type"], i["title"], i["is_movie"]) for i in client.get("/api/assets", headers=h).json()]}
     assert snapshot["usage"]["video"] == 2 and snapshot["usage"]["image"] == 1 and snapshot["usage"].get("face_replacement", 0) == 0     # the movie cost nothing
@@ -82,9 +84,9 @@ def check_after_restart(c2, email, pid, scene_ids, img_job, snapshot, other_head
     scenes = c2.get(f"/api/projects/{pid}/scenes", headers=h).json()["items"]
     assert [(s["title"], s["status"]) for s in scenes] == [("Dawn", "READY"), ("Dusk", "READY")] and [s["id"] for s in scenes] == scene_ids
     sub = c2.get("/api/subscription/current", headers=h).json()
-    assert sub["plan"]["id"] == "indie" and sub["subscription"]["status"] == "ACTIVE" and sub["subscription"]["payment_provider"] == "razorpay"
+    assert sub["plan"]["id"] == "trailer" and sub["subscription"]["status"] == "ACTIVE" and sub["subscription"]["payment_provider"] == "razorpay"
     pays = c2.get("/api/subscription/payments", headers=h).json()["items"]
-    assert [(p["status"], p["plan_id"], p["amount_minor"]) for p in pays] == [("PAID", "indie", 19900)]
+    assert [(p["status"], p["plan_id"], p["amount_minor"]) for p in pays] == [("PAID", "trailer", 19900)]
     assert usage(c2, h) == snapshot["usage"]
     jobs = c2.get("/api/jobs?limit=50", headers=h).json()
     assert sorted(j["type"] for j in jobs) == ["image", "movie", "video", "video"] and all(j["status"] == "COMPLETED" for j in jobs)
@@ -112,7 +114,7 @@ def check_after_restart(c2, email, pid, scene_ids, img_job, snapshot, other_head
     with SessionLocal() as db:
         assert (u := db.query(User).filter_by(email=email).one()).email_verified is True and db.query(EmailVerification).filter_by(user_id=u.id).count() == 1
         assert db.query(Project).count() == 1 and db.query(Scene).count() == 2 and db.query(GeneratedAsset).count() == 4 and db.query(GenerationJob).count() == 4
-        assert db.query(Subscription).filter_by(plan_id="indie").count() == 1 and db.query(Payment).filter_by(status="PAID").count() == 1
+        assert db.query(Subscription).filter_by(plan_id="trailer").count() == 1 and db.query(Payment).filter_by(status="PAID").count() == 1
         files = db.query(GeneratedAsset).filter(GeneratedAsset.file_path.isnot(None)).all()
         assert len(files) == 4 and all(get_storage().exists(a.file_path) and a.user_id for a in files)
         assert db.query(UsageRecord).filter(UsageRecord.status == "SUCCEEDED").count() == 3

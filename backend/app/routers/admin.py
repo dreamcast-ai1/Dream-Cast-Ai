@@ -9,8 +9,8 @@ from ..generators import GENERATORS
 from ..models import GenerationJob, Payment, Subscription, UsageRecord, User
 from ..plans import DEFAULT_PLAN_ID, PLANS, get_plan, public_plans
 from ..providers import registry
-from ..schemas import AdminUserPatch, JobOut, LimitsIn, ProviderPatch, SubscriptionPatch, UserOut
-from ..services import provider_settings, subscriptions, usage
+from ..schemas import AdminUserPatch, FeaturesIn, JobOut, LimitsIn, ProviderPatch, SubscriptionPatch, UserOut
+from ..services import features, provider_settings, subscriptions, usage
 
 # Every route in this router requires an ADMIN, enforced server-side.
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(admin_user)])
@@ -123,3 +123,15 @@ def update_provider(name: str, body: ProviderPatch, db: Session = Depends(get_db
     cap = None if body.clear_cap else (body.daily_cap if body.daily_cap is not None else "keep")
     provider_settings.update(db, name, enabled=body.enabled, daily_cap=cap)
     return {"providers": provider_settings.describe(db)}
+
+
+@router.get("/features")
+def get_features(db: Session = Depends(get_db)):
+    """Every switch with its state and provider status (status only, never a key)."""
+    return {"features": features.describe(db)}
+
+
+@router.put("/features")
+def put_features(body: FeaturesIn, db: Session = Depends(get_db)):
+    features.set_flags(db, body.features)
+    return {"features": features.describe(db)}

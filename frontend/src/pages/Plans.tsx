@@ -10,7 +10,7 @@ import { formatDate, formatPrice } from "../lib/format";
 import type { CheckoutOrder, CurrentSubscription, PlanInfo, UsageItem } from "../lib/types";
 
 // What each plan allows, in film terms. The numbers come from the server; nothing is hard-coded here.
-const ROWS: [string, string][] = [["video", "🎥 Video generations"], ["image", "🖼️ Image generations"], ["music", "🎵 Music generations"], ["face_replacement", "🎭 Face generations"],
+const ROWS: [string, string][] = [["video", "🎥 Videos"], ["image", "🖼️ Image generations"], ["music", "🎵 Music generations"], ["face_replacement", "🎭 Face generations"],
   ["story", "📖 Story generations"], ["script", "📝 Script generations"], ["voice", "🎤 Voice generations"]];
 
 interface RazorpayResponse { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }
@@ -44,7 +44,7 @@ function PlanCard({ plan, current, rank, currentRank, payments, busy, onUpgrade,
       </div>
       <p className="mt-4 font-display text-3xl font-bold">{price[0]}{price[1] && <span className="ml-1 font-sans text-sm font-normal text-muted">/ {price[1]}</span>}</p>
       <p className="mt-1 text-xs text-muted">{plan.description}</p>
-      <h3 className="mb-2 mt-5 font-sans text-xs font-semibold uppercase tracking-wider text-muted">Every {per}</h3>
+      <h3 className="mb-2 mt-5 font-sans text-xs font-semibold uppercase tracking-wider text-muted">Per {per}</h3>
       <ul className="space-y-1.5 text-sm">{ROWS.map(([g, label]) => <li key={g} className="flex justify-between gap-2"><span>{label}</span><span className="font-medium">{plan.limits[g]}</span></li>)}</ul>
       <h3 className="mb-2 mt-5 font-sans text-xs font-semibold uppercase tracking-wider text-muted">Includes</h3>
       <ul className="space-y-1.5 text-sm">
