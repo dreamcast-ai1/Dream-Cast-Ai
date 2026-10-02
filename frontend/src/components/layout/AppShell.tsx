@@ -2,6 +2,8 @@ import { BarChart3, Clapperboard, History as HistoryIcon, Images, PenLine, Ticke
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useFeatures } from "../../context/FeaturesContext";
+import { SupportWidget } from "../../support/SupportWidget";
 import { NotificationBell } from "./NotificationBell";
 import { UserMenu } from "./UserMenu";
 
@@ -43,6 +45,7 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
 export function AppShell() {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
+  const { supportEnabled } = useFeatures();
   useEffect(() => setOpen(false), [pathname]);
   useEffect(() => {
     if (!open) return;
@@ -81,6 +84,7 @@ export function AppShell() {
           <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8"><Outlet /></div>
         </main>
       </div>
+      {supportEnabled && <SupportWidget />}
     </div>
   );
 }

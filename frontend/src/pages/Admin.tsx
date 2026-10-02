@@ -6,11 +6,12 @@ import { useAuth } from "../context/AuthContext";
 import { useAsync } from "../hooks/useAsync";
 import { api, errorMessage } from "../lib/api";
 import { formatDate, timeAgo } from "../lib/format";
+import { AdminSupport } from "../support/AdminSupport";
 import type { AdminStats, AdminUser, FeatureItem, Job, ProviderInfo } from "../lib/types";
 
 const PLAN_CHOICES: [string, string][] = [["teaser", "Teaser"], ["trailer", "Trailer"], ["movie", "Movie"]];
 const TABS = [{ id: "overview", label: "Overview" }, { id: "features", label: "Features" }, { id: "users", label: "Users" }, { id: "limits", label: "Plans & limits" },
-  { id: "jobs", label: "Failed jobs" }, { id: "providers", label: "Providers" }, { id: "system", label: "System" }];
+  { id: "support", label: "Support" }, { id: "jobs", label: "Failed jobs" }, { id: "providers", label: "Providers" }, { id: "system", label: "System" }];
 
 interface SystemItem { id: string; label: string; ok: boolean; detail: string }
 
@@ -94,7 +95,8 @@ function Users() {
 
 const STATUS_TEXT: Record<string, string> = { configured: "Configured", not_configured: "Not configured", disabled: "Provider disabled" };
 const GROUPS: [FeatureItem["kind"], string, string][] = [["generator", "Generators", "Switched-off generators disappear from Create and are refused by the API. Everything already created stays available."],
-  ["language", "Languages", "English is always available."], ["refinement", "Prompt refinement", "AI refinement uses the configured text provider. Basic refinement is built in, never claims to be AI and needs no key."]];
+  ["language", "Languages", "English is always available."], ["refinement", "Prompt refinement", "AI refinement uses the configured text provider. Basic refinement is built in, never claims to be AI and needs no key."],
+  ["support", "Support", "A free, rule-based troubleshooting assistant plus support tickets. It never uses AI or any provider. Admins can always manage tickets in the Support tab."]];
 
 /** Feature switches stored in the database: no code change or redeploy is needed. Provider status shows configuration only, never a key. */
 function Features() {
@@ -212,7 +214,7 @@ export default function Admin() {
     <div>
       <PageHeader title="Admin" subtitle="Manage features, users, plans and system health." />
       <Tabs label="Admin sections" tabs={TABS} active={tab} onChange={(id) => setParams({ tab: id }, { replace: true })} />
-      <TabPanel id={tab}>{tab === "overview" && <Overview />}{tab === "features" && <Features />}{tab === "users" && <Users />}{tab === "limits" && <Limits />}{tab === "jobs" && <FailedJobs />}{tab === "providers" && <Providers />}{tab === "system" && <System />}</TabPanel>
+      <TabPanel id={tab}>{tab === "overview" && <Overview />}{tab === "features" && <Features />}{tab === "users" && <Users />}{tab === "limits" && <Limits />}{tab === "support" && <AdminSupport />}{tab === "jobs" && <FailedJobs />}{tab === "providers" && <Providers />}{tab === "system" && <System />}</TabPanel>
     </div>
   );
 }

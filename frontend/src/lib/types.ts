@@ -83,5 +83,5 @@ export interface ScriptResult {
   word_count: number; language: string; style: string; tone: string; script_format: string; duration_minutes: number | null; saved: SavedText | null; model: string; remaining: number;
 }
 
-export interface FeatureItem { id: string; label: string; description: string; kind: "generator" | "language" | "refinement"; enabled: boolean; default: boolean;
+export interface FeatureItem { id: string; label: string; description: string; kind: "generator" | "language" | "refinement" | "support"; enabled: boolean; default: boolean;
   provider: { status: "configured" | "not_configured" | "disabled"; provider: string | null; message?: string } | null }

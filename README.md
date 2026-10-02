@@ -486,6 +486,18 @@ from generating because refinement is unavailable. The result is labelled "AI re
 **Optional providers:** Face Swap, AI Avatar, Interactive Avatar, Music, Voice, Image and Video each need their own key; Story, Script, Lyrics and refinement need only the LLM key. Without a key
 the feature reports it is not configured and the rest of the app keeps working.
 
+## Support assistant and tickets (free, no AI)
+
+A floating **Support** button (bottom right of every signed-in page) opens a rule-based troubleshooting assistant. It never calls Gemini, Groq or any provider, uses no
+credits and needs no key: answers come from `backend/app/services/support_kb.py` (edit the text there) by keyword scoring. Plan prices and the user's own usage are read from
+the real configuration, and a switched-off feature is described as "currently unavailable", not broken. If the steps don't help, **Send to Admin** shows what will be sent and
+creates a ticket (reference `DC-1001`, …). Users see only their own tickets (Support → My tickets), can add information to an open one, and read the admin's reply (they also get a
+bell notification). Admins manage everything under Admin → Support (filters, In Progress / Resolve / Close, priority, reply). Priority is decided by the server, never by the user;
+free text is scrubbed of anything that looks like a key, token or password, and only a short allow-list of diagnostics is stored. Ticket creation is limited to
+`SUPPORT_TICKET_HOURLY_LIMIT` (default 5) per user per hour; chatting is not limited. Admin → Features → "Support chatbot" turns the user side off (the API then answers
+`403 feature_disabled`; admins keep ticket management). Endpoints: `/api/support/{options,chat,tickets,tickets/{ref},tickets/{ref}/messages}` and
+`/api/admin/support/tickets[/{ref}[/reply]]`. Migration `0009` adds `support_tickets` and `support_messages`.
+
 ## Images and the Library
 
 **Image generation** (Create → Image) uses fal.ai text-to-image (default `fal-ai/flux/schnell`, the cheapest model) behind the same provider

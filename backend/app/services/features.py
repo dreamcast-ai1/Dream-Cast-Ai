@@ -22,7 +22,7 @@ class Feature:
     label: str
     description: str
     default: bool
-    kind: str                      # generator | language | refinement
+    kind: str                      # generator | language | refinement | support
     generator: str | None = None   # the generator id a switch controls (face_swap -> face_replacement)
 
 
@@ -39,6 +39,7 @@ FEATURES: list[Feature] = [
     Feature("interactive_avatar", "Interactive Avatar", "Avatars you can talk to. Needs an avatar provider.", False, "generator", "interactive_avatar"),
     Feature("hindi", "Hindi", "Offer Hindi as a language for stories, lyrics and voice.", False, "language"),
     Feature("telugu", "Telugu", "Offer Telugu as a language for stories, lyrics and voice.", False, "language"),
+    Feature("support_chatbot", "Support chatbot", "The in-app Support assistant (free, no AI) and support tickets. Admins can always manage tickets.", True, "support"),
     Feature("prompt_refinement", "AI prompt refinement", "Improve prompts with the configured AI (LLM_PROVIDER).", True, "refinement"),
     Feature("free_refinement", "Basic (free) refinement", "A built-in, non-AI way to structure prompts. Works without any API key.", True, "refinement"),
     Feature("prefer_ai_refinement", "Prefer AI when available", "Use AI refinement first. Off = always use basic refinement.", True, "refinement"),
@@ -116,13 +117,13 @@ def availability(db: Session) -> dict:
     # An asset type is available while at least one generator that produces it is (AVATAR is shared by two generators).
     asset_types = {t: any(generators[g.id] for g in GENERATORS if g.asset_type == t) or not any(g.asset_type == t for g in GENERATORS) for t in ASSET_TYPES}
     return {"generators": generators, "asset_types": asset_types, "hidden": sorted(g for g, on in generators.items() if not on),
-            "languages": enabled_languages(db),
+            "languages": enabled_languages(db), "support": flags["support_chatbot"],
             "refinement": {"ai": flags["prompt_refinement"], "basic": flags["free_refinement"]}}
 
 
 def provider_status(db: Session, feature: Feature) -> dict | None:
     """Configuration status only, never a secret. 'configured' | 'not_configured' | 'disabled' | None (nothing to configure)."""
-    if feature.kind == "language" or feature.id in ("free_refinement", "prefer_ai_refinement", "auto_fallback_refinement"):
+    if feature.kind in ("language", "support") or feature.id in ("free_refinement", "prefer_ai_refinement", "auto_fallback_refinement"):
         return None
     if feature.id == "prompt_refinement":
         llm = prompt_refiner()

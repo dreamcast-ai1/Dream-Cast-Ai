@@ -99,6 +99,7 @@ class Settings(BaseSettings):
     llm_reasoning_effort: str = ""
     # Transient provider failures (HTTP 429/500/502/503/504, timeouts, dropped connections) are retried inside ONE request with exponential backoff
     # (about 1 s, then 2 s). Retries never cost the user extra allowance. Total attempts per call; 1 turns retrying off. Base delay 0 = no waiting (tests).
+    support_ticket_hourly_limit: int = 5          # new support tickets one user may open per hour (0 = unlimited)
     llm_max_attempts: int = 3
     llm_retry_base_seconds: float = 1.0
 

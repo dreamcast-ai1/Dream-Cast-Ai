@@ -287,3 +287,37 @@ class AppSetting(Base):
     key: Mapped[str] = mapped_column(String(80), primary_key=True)
     value: Mapped[dict] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, onupdate=_now)
+
+
+class SupportTicket(Base, TimestampedMixin):
+    """A problem a user sent to the admin team from the in-app Support assistant. `number` is the public reference (DC-1042); the
+    database id is never shown. diagnostic_context holds only the small allow-listed, scrubbed fields the support service accepts."""
+    __tablename__ = "support_tickets"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    number: Mapped[int] = mapped_column(Integer, unique=True, index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    category: Mapped[str] = mapped_column(String(20), default="GENERAL", index=True)
+    subject: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(15), default="open", index=True)      # open | in_progress | resolved | closed
+    priority: Mapped[str] = mapped_column(String(10), default="normal", index=True)  # low | normal | high | critical (set by the server)
+    page: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    feature: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    diagnostic_context: Mapped[dict] = mapped_column(JSON, default=dict)
+    admin_response: Mapped[str | None] = mapped_column(Text, nullable=True)           # the latest admin reply, for quick display
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=_now, onupdate=_now)
+    resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+    messages: Mapped[list["SupportMessage"]] = relationship(back_populates="ticket", cascade="all, delete-orphan", order_by="SupportMessage.created_at")
+
+
+class SupportMessage(Base, TimestampedMixin):
+    """Follow-ups on a ticket: more information from the user, or a reply from an admin."""
+    __tablename__ = "support_messages"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    ticket_id: Mapped[str] = mapped_column(ForeignKey("support_tickets.id", ondelete="CASCADE"), index=True)
+    author: Mapped[str] = mapped_column(String(10))       # user | admin
+    body: Mapped[str] = mapped_column(Text)
+
+    ticket: Mapped[SupportTicket] = relationship(back_populates="messages")

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 
-interface FeatureFlags { generators: Record<string, boolean>; asset_types: Record<string, boolean>; hidden: string[]; languages: string[]; refinement: { ai: boolean; basic: boolean } }
+interface FeatureFlags { generators: Record<string, boolean>; asset_types: Record<string, boolean>; hidden: string[]; languages: string[]; support?: boolean; refinement: { ai: boolean; basic: boolean } }
 interface FeaturesState {
   /** False until the first answer arrives (guarded screens wait for it, so a hidden feature never flashes on screen). */
   ready: boolean;
@@ -9,6 +9,8 @@ interface FeaturesState {
   isAssetTypeEnabled: (assetType: string) => boolean;
   /** Languages an administrator has switched on (English is always there). */
   languages: string[];
+  /** The free Support assistant (Admin -> Features can switch it off). */
+  supportEnabled: boolean;
 }
 
 const Ctx = createContext<FeaturesState | null>(null);
@@ -26,6 +28,7 @@ export function FeaturesProvider({ children }: { children: ReactNode }) {
     isGeneratorEnabled: (id) => flags?.generators[id] !== false,
     isAssetTypeEnabled: (type) => flags?.asset_types[type] !== false,
     languages: flags?.languages ?? ["English"],
+    supportEnabled: flags?.support !== false,
   }), [flags, ready]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
